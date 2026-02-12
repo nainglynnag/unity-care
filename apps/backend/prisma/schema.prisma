@@ -1,0 +1,375 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// User and Roles
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  phone        String    @unique
+  passwordHash String
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deleteAt     DateTime?
+
+  roles             UserRole[]
+  emergencyProfile  EmergencyProfile?
+  volunteerProfile  VolunteerProfile?
+  agencyMemberships AgencyMember[]
+
+  submittedVolunteerApplications VolunteerApplication[] @relation("VolunteerApplicant")
+  reviewedVolunteerApplications  VolunteerApplication[] @relation("VolunteerReviewer")
+
+  incidents      Incident[]
+  verifications  IncidentVerification[]
+  incidentMedias IncidentMedia[]
+
+  createMissions     Mission[]           @relation("MissionCreator")
+  assignments        MissionAssignment[] @relation("MissionAssignee")
+  missionLogs        MissionLog[]
+  missionAssignments MissionAssignment[]
+  missionReports     MissionReport[]
+
+  notifications Notification[]
+  auditLogs     AuditLog[]     @relation("UserAuditLogs")
+}
+
+model Role {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  users UserRole[]
+}
+
+model UserRole {
+  userId     String
+  roleId     String
+  assignedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+  role Role @relation(fields: [roleId], references: [id])
+
+  @@id([userId, roleId])
+}
+
+// User Emergency Profile
+model EmergencyProfile {
+  id                String    @id @default(uuid())
+  userId            String    @unique
+  fullName          String
+  dateOfBirth       DateTime?
+  bloodType         String?
+  allergies         String?
+  medicalConditions String?
+  medications       String?
+  consentGivenAt    DateTime
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user     User               @relation(fields: [userId], references: [id])
+  contacts EmergencyContact[]
+}
+
+model EmergencyContact {
+  id           String   @id @default(uuid())
+  profileId    String
+  name         String
+  phone        String
+  relationship String?
+  isPrimary    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  profile EmergencyProfile @relation(fields: [profileId], references: [id])
+
+  @@index([profileId])
+}
+
+// Agency or Command Center
+model Agency {
+  id        String   @id @default(uuid())
+  name      String
+  region    String?
+  createdAt DateTime @default(now())
+
+  members  AgencyMember[]
+  missions Mission[]
+}
+
+model AgencyMember {
+  agencyId String
+  userId   String
+  role     AgencyRole
+  joinedAt DateTime   @default(now())
+
+  agency Agency @relation(fields: [agencyId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@id([agencyId, userId])
+}
+
+// Volunteer
+model VolunteerApplication {
+  id          String            @id @default(uuid())
+  userId      String
+  status      ApplicationStatus
+  reviewNote  String?
+  reviewedBy  String?
+  submittedAt DateTime          @default(now())
+  reviewedAt  DateTime?
+
+  applicant User  @relation("VolunteerApplicant", fields: [userId], references: [id])
+  reviewer  User? @relation("VolunteerReviewer", fields: [reviewedBy], references: [id])
+}
+
+model VolunteerProfile {
+  userId               String   @id
+  skills               Json?
+  certifications       Json?
+  isAvailable          Boolean  @default(false)
+  availabilityRadiusKm Float?
+  lastKnownLatitude    Float?
+  lastKnownLongitude   Float?
+  updatedAt            DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+// Incident
+model IncidentCategory {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  incidents Incident[]
+}
+
+model Incident {
+  id          String         @id @default(uuid())
+  title       String
+  description String?
+  status      IncidentStatus
+
+  latitude      Float
+  longitude     Float
+  addressText   String?
+  landmark      String?
+  accuracyLevel LocationAccuracy?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  categoryId String
+  reportedBy String
+
+  category IncidentCategory @relation(fields: [categoryId], references: [id])
+  reporter User             @relation(fields: [reportedBy], references: [id])
+
+  verifications IncidentVerification[]
+  media         IncidentMedia[]
+  missions      Mission[]
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model IncidentVerification {
+  id        String               @id @default(uuid())
+  decision  VerificationDecision
+  comment   String?
+  createdAt DateTime             @default(now())
+
+  incidentId String
+  verifiedBy String
+
+  incident Incident @relation(fields: [incidentId], references: [id])
+  verifier User     @relation(fields: [verifiedBy], references: [id])
+
+  @@index([incidentId])
+}
+
+model IncidentMedia {
+  id        String    @id @default(uuid())
+  mediaType MediaType
+  url       String
+  createdAt DateTime  @default(now())
+
+  incidentId String
+  uploadedBy String
+
+  incident Incident @relation(fields: [incidentId], references: [id])
+  uploader User     @relation(fields: [uploadedBy], references: [id])
+}
+
+// Mission
+model Mission {
+  id          String        @id @default(uuid())
+  status      MissionStatus
+  priority    Int
+  assignedAt  DateTime?
+  acceptedAt  DateTime?
+  arrivalAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  incidentId String
+  createdBy  String
+  agencyId   String?
+
+  incident Incident @relation(fields: [incidentId], references: [id])
+  creator  User     @relation("MissionCreator", fields: [createdBy], references: [id])
+  agency   Agency?  @relation(fields: [agencyId], references: [id])
+
+  assignments MissionAssignment[]
+  logs        MissionLog[]
+  report      MissionReport?
+
+  @@index([status])
+}
+
+model MissionAssignment {
+  id           String    @id @default(uuid())
+  assignedAt   DateTime  @default(now())
+  unassignedAt DateTime?
+
+  missionId  String
+  assignedTo String
+  assignedBy String
+
+  mission  Mission @relation(fields: [missionId], references: [id])
+  assignee User    @relation("MissionAssignee", fields: [assignedTo], references: [id])
+  assigner User    @relation(fields: [assignedBy], references: [id])
+
+  @@index([assignedTo])
+}
+
+model MissionLog {
+  id        String        @id @default(uuid())
+  action    MissionAction
+  note      String?
+  createdAt DateTime      @default(now())
+
+  missionId String
+  actorId   String
+
+  mission Mission @relation(fields: [missionId], references: [id])
+  actor   User    @relation(fields: [actorId], references: [id])
+}
+
+model MissionReport {
+  id             String   @id @default(uuid())
+  missionId      String   @unique
+  summary        String
+  actionsTaken   String?
+  resourcesUsed  String?
+  casualties     Int?
+  propertyDamage String?
+  submittedBy    String
+  submittedAt    DateTime @default(now())
+
+  mission   Mission @relation(fields: [missionId], references: [id])
+  submitter User    @relation(fields: [submittedBy], references: [id])
+}
+
+// System Support
+model Notification {
+  id            String    @id @default(uuid())
+  userId        String
+  type          String
+  title         String
+  message       String
+  referenceType String?
+  referenceId   String?
+  isRead        Boolean   @default(false)
+  readAt        DateTime?
+  createdAt     DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  actor User? @relation("UserAuditLogs", fields: [actorId], references: [id])
+}
+
+// Enums
+enum IncidentStatus {
+  REPORTED
+  UNDER_REVIEW
+  VERIFIED
+  REJECTED
+  MISSION_CREATED
+  IN_RESPONSE
+  RESOLVED
+  CLOSED
+}
+
+enum VerificationDecision {
+  APPROVE
+  REJECT
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+  AUDIO
+}
+
+enum MissionStatus {
+  CREATED
+  ASSIGNED
+  ACCEPTED
+  EN_ROUTE
+  ON_SITE
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum MissionAction {
+  CREATED
+  ASSIGNED
+  ACCEPTED
+  EN_ROUTE
+  ON_SITE
+  STARTED
+  COMPLETED
+  CANCELLED
+  REASSIGNED
+}
+
+enum ApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum AgencyRole {
+  MEMBER
+  COORDINATOR
+  DIRECTOR
+}
+
+enum LocationAccuracy {
+  GPS
+  MANUAL
+  VERIFIED
+}

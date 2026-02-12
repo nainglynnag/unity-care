@@ -1,27 +1,27 @@
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useState } from "react";
 import Header from "../components/Header";
 
-function Login() {
+function SignUp() {
   const navigate = useNavigate();
+  const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [rememberMe, setRememberMe] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: Implement login logic
-    console.log("Login:", { email, password, rememberMe });
+    // TODO: Implement signup logic
+    console.log("Signup:", { fullName, email, password });
   };
 
   const handleGoogleLogin = () => {
     // TODO: Implement Google login
-    console.log("Google login");
+    console.log("Google signup");
   };
 
   const handleGitHubLogin = () => {
     // TODO: Implement GitHub login
-    console.log("GitHub login");
+    console.log("GitHub signup");
   };
 
   return (
@@ -52,11 +52,32 @@ function Login() {
           </div>
 
           {/* Title */}
-          <h1 className="text-white text-3xl font-bold text-center mb-2">Welcome Back</h1>
-          <p className="text-white/70 text-sm text-center mb-8">Sign in to continue to your account</p>
+          <h1 className="text-white text-3xl font-bold text-center mb-2">Create Your Account</h1>
+          <p className="text-white/70 text-sm text-center mb-8">Sign up to get started.</p>
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Full Name Field */}
+            <div>
+              <label className="block text-white/90 text-sm font-medium mb-2">Full Name</label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-white/50">
+                    <path d="M20 21V19C20 17.9391 19.5786 16.9217 18.8284 16.1716C18.0783 15.4214 17.0609 15 16 15H8C6.93913 15 5.92172 15.4214 5.17157 16.1716C4.42143 16.9217 4 17.9391 4 19V21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    <circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </div>
+                <input
+                  type="text"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="Enter your full name"
+                  className="w-full pl-10 pr-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                  required
+                />
+              </div>
+            </div>
+
             {/* Email Field */}
             <div>
               <label className="block text-white/90 text-sm font-medium mb-2">Email Address</label>
@@ -92,35 +113,25 @@ function Login() {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter your password"
+                  placeholder="Create a password"
                   className="w-full pl-10 pr-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
                   required
                 />
               </div>
+              <p className="text-white/50 text-xs mt-1 flex items-center gap-1">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M12 8V12M12 16H12.01M22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                Must have at least 8 characters
+              </p>
             </div>
 
-            {/* Remember Me & Forgot Password */}
-            <div className="flex items-center justify-between">
-              <label className="flex items-center">
-                <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                  className="w-4 h-4 bg-gray-800 border-gray-700 rounded text-red-500 focus:ring-red-500"
-                />
-                <span className="ml-2 text-white/70 text-sm">Remember me</span>
-              </label>
-              <Link to="/forgot-password" className="text-red-500 hover:text-red-400 text-sm">
-                Forgot password?
-              </Link>
-            </div>
-
-            {/* Sign In Button */}
+            {/* Sign Up Button */}
             <button
               type="submit"
               className="w-full bg-red-500 hover:bg-red-600 text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200"
             >
-              Sign In
+              Sign Up
             </button>
           </form>
 
@@ -159,11 +170,11 @@ function Login() {
             </button>
           </div>
 
-          {/* Sign Up Link */}
+          {/* Sign In Link */}
           <p className="text-center mt-6 text-white/70 text-sm">
-            Don't have an account?{" "}
-            <Link to="/signup" className="text-red-500 hover:text-red-400 font-medium">
-              Sign up
+            Already have an account?{" "}
+            <Link to="/login" className="text-red-500 hover:text-red-400 font-medium">
+              Sign In
             </Link>
           </p>
         </div>
@@ -172,4 +183,4 @@ function Login() {
   );
 }
 
-export default Login;
+export default SignUp;

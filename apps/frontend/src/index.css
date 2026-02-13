@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-@theme {
+:root {
   --font-family-sans: 'Lato', sans-serif;
 }
 

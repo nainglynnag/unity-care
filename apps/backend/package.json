@@ -8,6 +8,7 @@
     "build": "bun build src/server.ts --outdir dist"
   },
   "devDependencies": {
+    "@faker-js/faker": "^10.3.0",
     "@types/bun": "latest",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",

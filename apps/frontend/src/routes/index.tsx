@@ -1,7 +1,7 @@
 import { Routes, Route } from 'react-router-dom';
 import SOSpage from '../pages/SOSpage';
 import Login from '../pages/Login';
-import SignUp from '../pages/signup';
+import SignUp from '../pages/SignUp';
 import ChooseHelp from '../pages/ChooseHelp';
 import Chat from '../pages/Chat';
 

@@ -154,7 +154,6 @@ function Chat() {
             {sidebarOpen ? (
               <button
                 type="button"
-                className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-full transition-colors"
                 aria-label="Menu"
               >
                 
@@ -163,7 +162,7 @@ function Chat() {
               <button
                 type="button"
                 onClick={() => setSidebarOpen(true)}
-                className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-full transition-colors"
+                className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors cursor-pointer "
                 aria-label="Open sidebar"
               >
                 <ChevronLeftIcon />
@@ -232,7 +231,7 @@ function Chat() {
                 <button
                   type="button"
                   onClick={() => setSidebarOpen(false)}
-                  className="w-10 h-10 rounded-lg bg-gray-800 flex items-center justify-center text-white font-bold text-lg hover:bg-gray-700 transition-colors"
+                  className="w-10 h-10 rounded-lg bg-gray-800 flex items-center justify-center text-white font-bold text-lg hover:bg-gray-700 transition-colors cursor-pointer"
                   aria-label="Close sidebar"
                 >
                   <ChevronRightIcon fontSize="small" />

@@ -4,6 +4,8 @@ import Login from '../pages/Login';
 import SignUp from '../pages/SignUp';
 import ChooseHelp from '../pages/ChooseHelp';
 import Chat from '../pages/Chat';
+import Map from '../pages/Map';
+import CompleteMission from '../pages/CompleteMission';
 
 export const UserRoutes = () => {
   return (
@@ -13,6 +15,8 @@ export const UserRoutes = () => {
       <Route path="/signup" element={<SignUp />} />
       <Route path="/choosehelp" element={<ChooseHelp />} />
       <Route path="/chat" element={<Chat />} />
+      <Route path="/map" element={<Map />} />
+      <Route path="/completemission" element={<CompleteMission />} />
     </Routes>
   );
 };

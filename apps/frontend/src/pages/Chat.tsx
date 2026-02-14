@@ -4,6 +4,7 @@ import SendIcon from "@mui/icons-material/Send";
 import LocationOnIcon from "@mui/icons-material/LocationOn";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
+import { useNavigate } from "react-router-dom";
 
 type Message = {
   id: string;
@@ -45,12 +46,32 @@ const initialMessages: Message[] = [
   },
 ];
 
+type LocationState = {
+  lat: number | null;
+  lng: number | null;
+  address: string | null;
+  cityRegion: string | null;
+  loading: boolean;
+  error: string | null;
+};
+
 function Chat() {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [input, setInput] = useState("");
   const [timerSeconds, setTimerSeconds] = useState(2 * 60 + 15); // 02:15
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [location, setLocation] = useState<LocationState>({
+    lat: null,
+    lng: null,
+    address: null,
+    cityRegion: null,
+    loading: true,
+    error: null,
+  });
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
+
+
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -59,6 +80,57 @@ function Chat() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Get real user location
+  useEffect(() => {
+    if (!navigator.geolocation) {
+      setLocation((prev) => ({
+        ...prev,
+        loading: false,
+        error: "Geolocation is not supported by your browser.",
+      }));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        setLocation((prev) => ({ ...prev, lat: latitude, lng: longitude, loading: false, error: null }));
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`,
+            { headers: { "Accept-Language": "en" } }
+          );
+          const data = await res.json();
+          const addr = data.address;
+          const road = addr?.road || addr?.street || "";
+          const house = addr?.house_number || "";
+          const address = [house, road].filter(Boolean).join(" ") || data.display_name?.split(",")[0] || null;
+          const city = addr?.city || addr?.town || addr?.village || addr?.municipality || "";
+          const state = addr?.state || addr?.county || "";
+          const cityRegion = [city, state].filter(Boolean).join(", ") || null;
+          setLocation((prev) => ({
+            ...prev,
+            address: address || prev.address,
+            cityRegion: cityRegion || prev.cityRegion,
+          }));
+        } catch {
+          setLocation((prev) => ({
+            ...prev,
+            address: `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`,
+            cityRegion: "Coordinates",
+          }));
+        }
+      },
+      (err) => {
+        setLocation((prev) => ({
+          ...prev,
+          loading: false,
+          error: err.message || "Unable to get your location.",
+        }));
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+    );
+  }, []);
 
   // Incident timer count-up
   useEffect(() => {
@@ -255,11 +327,29 @@ function Chat() {
             <h3 className="text-gray-400 text-sm font-medium mb-2">Location</h3>
             <div className="flex items-start gap-2">
               <LocationOnIcon className="text-red-500 shrink-0 mt-0.5" fontSize="small" />
-              <div className="text-white text-sm">
-                <p>123 Main Street</p>
-                <p className="text-gray-400">San Francisco, CA 94102</p>
+              <div className="text-white text-sm min-w-0">
+                {location.loading && (
+                  <p className="text-gray-400">Getting your location...</p>
+                )}
+                {location.error && (
+                  <p className="text-amber-400">{location.error}</p>
+                )}
+                {!location.loading && !location.error && (
+                  <>
+                    <p>{location.address ?? (location.lat != null && location.lng != null ? `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}` : "—")}</p>
+                    <p className="text-gray-400">{location.cityRegion ?? "Current position"}</p>
+                  </>
+                )}
               </div>
             </div>
+            <button
+              type="button"
+              onClick={() => navigate("/map", { state: location.lat != null && location.lng != null ? { lat: location.lat, lng: location.lng } : undefined })}
+              className="mt-3 w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium transition-colors cursor-pointer"
+            >
+              <LocationOnIcon fontSize="small" />
+              Map
+            </button>
           </div>
 
           {/* Response Team */}

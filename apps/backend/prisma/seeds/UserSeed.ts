@@ -39,6 +39,7 @@ async function ensureRoles(): Promise<RoleMap> {
 async function createUserBase() {
     return prisma.user.create({
         data: {
+            name: faker.person.fullName(),
             email: faker.internet.email().toLowerCase(),
             phone:faker.phone.number(),
             passwordHash:faker.internet.password(),

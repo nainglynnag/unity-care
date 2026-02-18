@@ -1,41 +1,47 @@
 import { type Request, type Response, type NextFunction } from "express";
-import { verifyAccessToken } from "../utils/jwt";
+import { verifyAccessToken, type JwtPayload } from "../utils/jwt";
+import {
+  UnauthorizedError,
+  TokenInvalidError,
+  ForbiddenError,
+} from "../utils/errors";
 
-export async function authenticate(req: Request, res: Response, next: NextFunction) {
-    const authHeader = req.headers.authorization;
+declare global {
+  namespace Express {
+    interface Request {
+      user?: JwtPayload;
+    }
+  }
+}
 
-    if (!authHeader) {
-        return res.status(401).json({
-            meta: {
-                success: false,
-                timestamp: new Date().toISOString(),
-            },
-            error: "UNAUTHORIZED",
-        });
+export function authenticate(req: Request, res: Response, next: NextFunction) {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader) return next(new UnauthorizedError());
+
+  const [scheme, token] = authHeader.split(" ");
+
+  if (scheme !== "Bearer" || !token) return next(new UnauthorizedError());
+
+  const payload = verifyAccessToken(token);
+
+  if (!payload) return next(new TokenInvalidError());
+
+  req.user = payload;
+  next();
+}
+
+// Role guard middleware
+// Usage: router.get("/admin", authenticate, requireRoles("ADMIN"), handler)
+// Example: requireRoles("ADMIN", "COORDINATOR") allows either role through.
+export function requireRoles(...allowedRoles: string[]) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const userRole = req.user?.role;
+
+    if (!userRole || !allowedRoles.includes(userRole)) {
+      return next(new ForbiddenError(allowedRoles));
     }
 
-    const [schema,token] = authHeader.split(" ");
-    if (schema !== "Bearer" || !token) {
-        return res.status(401).json({
-            meta: {
-                success: false,
-                timestamp: new Date().toISOString(),
-            },
-            error: "INVALID_AUTH_HEADER",
-        });
-    }
-
-    try {
-        const payload = verifyAccessToken(token);
-        (req as any).user = payload;
-        next();
-    } catch (error) {
-        res.status(401).json({
-            meta: {
-                success: false,
-                timestamp: new Date().toISOString(),
-            },
-            error: "INVALID_TOKEN",
-        });
-    }
+    next();
+  };
 }

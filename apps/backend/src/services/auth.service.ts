@@ -1,8 +1,14 @@
 import bcrypt from "bcrypt";
 import { prisma } from "../lib/prisma";
 import { generateAccessToken, generateRefreshToken } from "../utils/jwt";
-import { AppError } from "../utils/appError";
+import {
+  InvalidCredentialsError,
+  AccountInactiveError,
+  DuplicateFieldError,
+  UserAlreadyRegisteredError,
+} from "../utils/errors";
 
+// Registration with email & password
 export async function register(data: {
   name: string;
   email: string;
@@ -14,7 +20,7 @@ export async function register(data: {
   });
 
   if (existingUser) {
-    throw new Error("Email has already registerd");
+    throw new UserAlreadyRegisteredError();
   }
 
   const hashedPassword = await bcrypt.hash(data.password, 10);
@@ -43,53 +49,90 @@ export async function register(data: {
       },
     });
 
-    const primaryRole = user.roles[0]?.role.name || "CIVILIAN";
+    const role = user.roles[0]?.role.name ?? "CIVILIAN";
 
-    const payload = {
-      sub: user.id,
-      role: primaryRole,
-    };
+    const payload = { sub: user.id, role };
 
     return {
       accessToken: generateAccessToken(payload),
       refreshToken: generateRefreshToken(payload),
+      user: sanitizeUser(user, role),
     };
   } catch (error: any) {
     if (error.code === "P2002") {
-      throw new AppError(
-        "DUPLICATE_FIELD",
-        "Email or phone number already exists.",
-        409,
-      );
+      const field = (error.meta?.target as string[])?.includes("phone")
+        ? "phone"
+        : "email";
+      throw new DuplicateFieldError(field);
     }
 
     throw error;
   }
 }
 
+// Login with email & password
 export async function login(email: string, password: string) {
   const user = await prisma.user.findUnique({
     where: { email },
     include: { roles: { include: { role: true } } },
   });
 
-  if (!user)
-    throw new AppError("INVALID_CREDENTIALS", "Invalid email or password", 401);
+  if (!user) throw new InvalidCredentialsError();
+  if (!user.isActive) throw new AccountInactiveError();
 
   const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
 
-  if (!isPasswordValid)
-    throw new AppError("INVALID_CREDENTIALS", "Invalid email or password", 401);
+  if (!isPasswordValid) throw new InvalidCredentialsError();
 
-  const primaryRole = user.roles[0]?.role.name || "CIVILIAN";
+  const role = user.roles[0]?.role.name ?? "CIVILIAN";
 
-  const payload = {
-    sub: user.id,
-    role: primaryRole,
-  };
+  const payload = { sub: user.id, role };
 
   return {
     accessToken: generateAccessToken(payload),
     refreshToken: generateRefreshToken(payload),
+    user: sanitizeUser(user, role),
+  };
+}
+
+// Refresh Tokens
+export async function refreshTokens(userId: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: { roles: { include: { role: true } } },
+  });
+
+  if (!user) throw new InvalidCredentialsError();
+  if (!user.isActive) throw new AccountInactiveError();
+
+  const role = user.roles[0]?.role.name ?? "CIVILIAN";
+  const payload = { sub: user.id, role };
+
+  return {
+    accessToken: generateAccessToken(payload),
+    refreshToken: generateRefreshToken(payload),
+  };
+}
+
+// Strips passwordHash — never expose it to the client.
+function sanitizeUser(
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    phone: string;
+    profileImageUrl: string | null;
+    createdAt: Date;
+  },
+  role: string,
+) {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    phone: user.phone,
+    profileImageUrl: user.profileImageUrl,
+    role,
+    createdAt: user.createdAt,
   };
 }

@@ -9,13 +9,16 @@ export function errorHandler(
   res: Response,
   next: NextFunction,
 ) {
-  console.error("Error:", err);
+  console.error(
+    `[${new Date().toISOString()}] ${req.method} ${req.path} →`,
+    err,
+  );
 
   if (err instanceof ZodError) {
     return errorResponse(
       res,
       "VALIDATION_ERROR",
-      "The request failed validation rules.",
+      "The request failed validation.",
       err.issues.map((e) => ({
         field: e.path.join("."),
         message: e.message,
@@ -37,8 +40,8 @@ export function errorHandler(
 
   return errorResponse(
     res,
-    err.code || "INTERNAL_SERVER_ERROR",
-    err.message || "An unexpected error occurred. Please try again later.",
+    "INTERNAL_SERVER_ERROR",
+    "An unexpected error occurred. Please try again later.",
     [],
     500,
   );

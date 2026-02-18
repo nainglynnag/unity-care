@@ -9,16 +9,18 @@ datasource db {
 
 // User and Roles
 model User {
-  id           String    @id @default(uuid())
-  name         String
-  email        String    @unique
-  phone        String    @unique
-  passwordHash String
-  isActive     Boolean   @default(true)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  deleteAt     DateTime?
+  id              String    @id @default(uuid())
+  name            String
+  email           String    @unique
+  phone           String    @unique
+  passwordHash    String
+  profileImageUrl String?
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
 
+  // Relations
   roles             UserRole[]
   emergencyProfile  EmergencyProfile?
   volunteerProfile  VolunteerProfile?
@@ -27,15 +29,16 @@ model User {
   submittedVolunteerApplications VolunteerApplication[] @relation("VolunteerApplicant")
   reviewedVolunteerApplications  VolunteerApplication[] @relation("VolunteerReviewer")
 
-  incidents      Incident[]
-  verifications  IncidentVerification[]
-  incidentMedias IncidentMedia[]
+  reportedIncidents Incident[]             @relation("IncidentReporter")
+  verifications     IncidentVerification[]
+  uploadedMedia     IncidentMedia[]
 
-  createMissions     Mission[]           @relation("MissionCreator")
-  assignments        MissionAssignment[] @relation("MissionAssignee")
-  missionLogs        MissionLog[]
-  missionAssignments MissionAssignment[]
-  missionReports     MissionReport[]
+  createdMissions  Mission[]           @relation("MissionCreator")
+  assignedMissions MissionAssignment[] @relation("MissionAssignee")
+  assignerOf       MissionAssignment[] @relation("MissionAssigner")
+  missionLogs      MissionLog[]
+  missionReports   MissionReport[]
+  missionTracking  MissionTracking[]
 
   notifications Notification[]
   auditLogs     AuditLog[]     @relation("UserAuditLogs")
@@ -99,8 +102,9 @@ model Agency {
   region    String?
   createdAt DateTime @default(now())
 
-  members  AgencyMember[]
-  missions Mission[]
+  members      AgencyMember[]
+  missions     Mission[]
+  applications VolunteerApplication[]
 }
 
 model AgencyMember {
@@ -116,30 +120,48 @@ model AgencyMember {
 }
 
 // Volunteer
-model VolunteerApplication {
-  id          String            @id @default(uuid())
-  userId      String
-  status      ApplicationStatus
-  reviewNote  String?
-  reviewedBy  String?
-  submittedAt DateTime          @default(now())
-  reviewedAt  DateTime?
-
-  applicant User  @relation("VolunteerApplicant", fields: [userId], references: [id])
-  reviewer  User? @relation("VolunteerReviewer", fields: [reviewedBy], references: [id])
-}
-
 model VolunteerProfile {
   userId               String   @id
-  skills               Json?
-  certifications       Json?
   isAvailable          Boolean  @default(false)
   availabilityRadiusKm Float?
   lastKnownLatitude    Float?
   lastKnownLongitude   Float?
   updatedAt            DateTime @updatedAt
 
-  user User @relation(fields: [userId], references: [id])
+  user   User             @relation(fields: [userId], references: [id])
+  skills VolunteerSkill[]
+}
+
+model Skill {
+  id   String @id @default(uuid())
+  name String @unique
+
+  volunteers VolunteerSkill[]
+}
+
+model VolunteerSkill {
+  volunteerId String
+  skillId     String
+
+  volunteer VolunteerProfile @relation(fields: [volunteerId], references: [userId])
+  skill     Skill            @relation(fields: [skillId], references: [id])
+
+  @@id([volunteerId, skillId])
+}
+
+model VolunteerApplication {
+  id          String            @id @default(uuid())
+  userId      String
+  agencyId    String
+  status      ApplicationStatus
+  reviewNote  String?
+  reviewedBy  String?
+  submittedAt DateTime          @default(now())
+  reviewedAt  DateTime?
+
+  applicant User   @relation("VolunteerApplicant", fields: [userId], references: [id])
+  reviewer  User?  @relation("VolunteerReviewer", fields: [reviewedBy], references: [id])
+  agency    Agency @relation(fields: [agencyId], references: [id])
 }
 
 // Incident
@@ -154,26 +176,24 @@ model IncidentCategory {
 }
 
 model Incident {
-  id          String         @id @default(uuid())
+  id          String            @id @default(uuid())
   title       String
   description String?
   status      IncidentStatus
-
-  latitude      Float
-  longitude     Float
-  addressText   String?
-  landmark      String?
-  accuracyLevel LocationAccuracy?
-
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
+  latitude    Float
+  longitude   Float
+  addressText String?
+  landmark    String?
+  accuracy    LocationAccuracy?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  deletedAt   DateTime?
 
   categoryId String
   reportedBy String
 
   category IncidentCategory @relation(fields: [categoryId], references: [id])
-  reporter User             @relation(fields: [reportedBy], references: [id])
+  reporter User             @relation("IncidentReporter", fields: [reportedBy], references: [id])
 
   verifications IncidentVerification[]
   media         IncidentMedia[]
@@ -213,15 +233,15 @@ model IncidentMedia {
 
 // Mission
 model Mission {
-  id          String        @id @default(uuid())
+  id          String          @id @default(uuid())
+  missionType String
   status      MissionStatus
-  priority    Int
-  assignedAt  DateTime?
+  priority    MissionPriority
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
   acceptedAt  DateTime?
-  arrivalAt   DateTime?
+  onSiteAt    DateTime?
   completedAt DateTime?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
 
   incidentId String
   createdBy  String
@@ -233,25 +253,39 @@ model Mission {
 
   assignments MissionAssignment[]
   logs        MissionLog[]
+  tracking    MissionTracking[]
   report      MissionReport?
 
   @@index([status])
 }
 
 model MissionAssignment {
-  id           String    @id @default(uuid())
-  assignedAt   DateTime  @default(now())
+  missionId    String
+  assignedTo   String
+  assignedBy   String
+  role         MissionRole
+  assignedAt   DateTime    @default(now())
   unassignedAt DateTime?
-
-  missionId  String
-  assignedTo String
-  assignedBy String
 
   mission  Mission @relation(fields: [missionId], references: [id])
   assignee User    @relation("MissionAssignee", fields: [assignedTo], references: [id])
-  assigner User    @relation(fields: [assignedBy], references: [id])
+  assigner User    @relation("MissionAssigner", fields: [assignedBy], references: [id])
 
-  @@index([assignedTo])
+  @@id([missionId, assignedTo])
+}
+
+model MissionTracking {
+  id          String   @id @default(uuid())
+  missionId   String
+  volunteerId String
+  latitude    Float
+  longitude   Float
+  recordedAt  DateTime @default(now())
+
+  mission   Mission @relation(fields: [missionId], references: [id])
+  volunteer User    @relation(fields: [volunteerId], references: [id])
+
+  @@index([missionId])
 }
 
 model MissionLog {
@@ -284,18 +318,20 @@ model MissionReport {
 
 // System Support
 model Notification {
-  id            String    @id @default(uuid())
+  id            String           @id @default(uuid())
   userId        String
-  type          String
+  type          NotificationType
   title         String
   message       String
   referenceType String?
   referenceId   String?
-  isRead        Boolean   @default(false)
+  isRead        Boolean          @default(false)
   readAt        DateTime?
-  createdAt     DateTime  @default(now())
+  createdAt     DateTime         @default(now())
 
   user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, isRead])
 }
 
 model AuditLog {
@@ -313,18 +349,18 @@ model AuditLog {
 // Enums
 enum IncidentStatus {
   REPORTED
-  UNDER_REVIEW
+  AWAITING_VERIFICATION
   VERIFIED
-  REJECTED
-  MISSION_CREATED
-  IN_RESPONSE
+  UNREACHABLE
+  FALSE_REPORT
   RESOLVED
   CLOSED
 }
 
 enum VerificationDecision {
-  APPROVE
-  REJECT
+  VERIFIED
+  UNREACHABLE
+  FALSE_REPORT
 }
 
 enum MediaType {
@@ -343,24 +379,42 @@ enum MissionStatus {
   COMPLETED
   FAILED
   CANCELLED
+  CLOSED
+}
+
+enum MissionPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum MissionRole {
+  LEADER
+  MEMBER
 }
 
 enum MissionAction {
   CREATED
   ASSIGNED
   ACCEPTED
+  REJECTED
   EN_ROUTE
   ON_SITE
   STARTED
   COMPLETED
+  FAILED
   CANCELLED
   REASSIGNED
+  CLOSED
 }
 
 enum ApplicationStatus {
   PENDING
+  UNDER_REVIEW
   APPROVED
   REJECTED
+  WITHDRAWN
 }
 
 enum AgencyRole {
@@ -373,4 +427,22 @@ enum LocationAccuracy {
   GPS
   MANUAL
   VERIFIED
+}
+
+enum NotificationType {
+  INCIDENT_CREATED
+  INCIDENT_STATUS_UPDATED
+  VERIFICATION_REQUESTED
+  VERIFICATION_COMPLETED
+  MISSION_CREATED
+  MISSION_ASSIGNED
+  MISSION_ACCEPTED
+  MISSION_REJECTED
+  MISSION_EN_ROUTE
+  MISSION_ON_SITE
+  MISSION_COMPLETED
+  MISSION_FAILED
+  APPLICATION_SUBMITTED
+  APPLICATION_REVIEWED
+  GENERAL
 }

@@ -3,7 +3,9 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../../generated/prisma/client";
 import { faker } from "@faker-js/faker";
 
-const adapter = new PrismaPg({ connectionString: `${process.env.DATABASE_URL}` });
+const adapter = new PrismaPg({
+  connectionString: `${process.env.DATABASE_URL}`,
+});
 const prisma = new PrismaClient({ adapter });
 
 faker.seed(88888);
@@ -30,15 +32,12 @@ export async function auditLogSeed() {
     ]);
 
     let entityId: string | null = null;
-
     if (entityType === "USER") {
       entityId = faker.helpers.arrayElement(users).id;
     }
-
     if (entityType === "INCIDENT" && incidents.length > 0) {
       entityId = faker.helpers.arrayElement(incidents).id;
     }
-
     if (entityType === "MISSION" && missions.length > 0) {
       entityId = faker.helpers.arrayElement(missions).id;
     }

@@ -8,23 +8,29 @@ import { notificationSeed } from "./seeds/notificationSeed";
 import { auditLogSeed } from "./seeds/AuditLogSeed";
 import { agencySeed } from "./seeds/AgencySeed";
 
-const adapter = new PrismaPg({ connectionString: `${process.env.DATABASE_URL}` });
+const adapter = new PrismaPg({
+  connectionString: `${process.env.DATABASE_URL}`,
+});
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
-    try {
-        await userSeed();
-        await agencySeed();
-        await incidentSeed();
-        await missionSeed();
-        await notificationSeed();
-        await auditLogSeed();
-    } catch (error) {
-        console.error(error);
-        process.exit(1);
-    }finally {
-        await prisma.$disconnect();
-    }
+  console.log("Starting full database seed...\n");
+
+  await userSeed();
+  await agencySeed();
+  await incidentSeed();
+  await missionSeed();
+  await notificationSeed();
+  await auditLogSeed();
+
+  console.log("\nAll seeds completed successfully.");
 }
 
-main();
+main()
+  .catch((e) => {
+    console.error("Seeding failed:", e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });

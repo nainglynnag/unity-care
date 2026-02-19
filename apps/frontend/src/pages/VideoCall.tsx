@@ -89,9 +89,6 @@ function VideoCall() {
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
-  const handleEndCall = () => {
-    navigate("/choosehelp");
-  };
 
   const NavigateToChat = () => {
     navigate("/chat");

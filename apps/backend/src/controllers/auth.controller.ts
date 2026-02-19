@@ -1,6 +1,10 @@
 import { type NextFunction, type Request, type Response } from "express";
 import * as authService from "../services/auth.service";
-import { registerSchema, loginSchema } from "../validators/auth.validator";
+import {
+  registerSchema,
+  loginSchema,
+  refreshSchema,
+} from "../validators/auth.validator";
 import { successResponse } from "../utils/response";
 import { verifyRefreshToken } from "../utils/jwt";
 import { TokenInvalidError } from "../utils/errors";
@@ -39,7 +43,7 @@ export async function login(req: Request, res: Response, next: NextFunction) {
 // Accepts a valid refresh token in the request body and issues a new token pair.
 export async function refresh(req: Request, res: Response, next: NextFunction) {
   try {
-    const { refreshToken } = req.body as { refreshToken?: string };
+    const { refreshToken } = refreshSchema.parse(req.body);
 
     if (!refreshToken) return next(new TokenInvalidError());
 

@@ -8,6 +8,8 @@
     "build": "bun build src/server.ts --outdir dist"
   },
   "devDependencies": {
+    "@faker-js/faker": "^10.3.0",
+    "@types/bcrypt": "^6.0.0",
     "@types/bun": "latest",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
@@ -19,7 +21,8 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@prisma/client": "^7.3.0",
+    "@prisma/adapter-pg": "^7.3.0",
+    "@prisma/client": "^7.4.0",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
     "dotenv": "^17.2.4",
@@ -28,7 +31,7 @@
     "jsonwebtoken": "^9.0.3",
     "pino": "^10.3.0",
     "pino-http": "^11.0.0",
-    "prisma": "^7.3.0",
+    "prisma": "^7.4.0",
     "uuid": "^13.0.0",
     "zod": "^4.3.6"
   }

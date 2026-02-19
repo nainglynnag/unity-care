@@ -6,6 +6,8 @@ import ChooseHelp from '../pages/ChooseHelp';
 import Chat from '../pages/Chat';
 import Map from '../pages/Map';
 import CompleteMission from '../pages/CompleteMission';
+import VoiceCall from '../pages/VoiceCall';
+import VideoCall from '../pages/VideoCall';
 
 export const UserRoutes = () => {
   return (
@@ -17,6 +19,8 @@ export const UserRoutes = () => {
       <Route path="/chat" element={<Chat />} />
       <Route path="/map" element={<Map />} />
       <Route path="/completemission" element={<CompleteMission />} />
+      <Route path="/voicecall" element={<VoiceCall />} />
+      <Route path="/videocall" element={<VideoCall />} />
     </Routes>
   );
 };

@@ -4,6 +4,7 @@ import SendIcon from "@mui/icons-material/Send";
 import LocationOnIcon from "@mui/icons-material/LocationOn";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
+import PhoneIcon from "@mui/icons-material/Phone";
 import { useNavigate } from "react-router-dom";
 
 type Message = {
@@ -165,6 +166,10 @@ function Chat() {
       },
     ]);
     setInput("");
+  };
+
+  const handleCallContact = () => {
+    navigate("/voicecall");
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -353,9 +358,9 @@ function Chat() {
           </div>
 
           {/* Response Team */}
-          <div className="bg-gray-800 rounded-xl p-4 shadow-lg">
+          <div className="bg-gray-800 rounded-xl p-4 mb-4 shadow-lg">
             <h3 className="text-gray-400 text-sm font-medium mb-3">Response Team</h3>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 rounded-full  flex items-center justify-center text-white font-semibold text-lg shrink-0 overflow-hidden">
                 <svg
                   width="24"
@@ -389,6 +394,14 @@ function Chat() {
                 <p className="text-gray-400 text-sm">Emergency Coordinator</p>
               </div>
             </div>
+            <button
+              type="button"
+              onClick={handleCallContact}
+              className="w-full bg-red-500 hover:bg-red-600 text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 transition-colors duration-200 cursor-pointer"
+            >
+              <PhoneIcon sx={{ fontSize: 20 }} />
+              Call Contact
+            </button>
           </div>
           </div>
           </div>

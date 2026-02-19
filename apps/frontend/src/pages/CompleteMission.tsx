@@ -1,98 +1,22 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import LocationOnIcon from "@mui/icons-material/LocationOn";
-import AccessTimeIcon from "@mui/icons-material/AccessTime";
-import PersonOutlineIcon from "@mui/icons-material/PersonOutline";
 import CheckIcon from "@mui/icons-material/Check";
-
-type LocationState = {
-  address: string | null;
-  cityRegion: string | null;
-  loading: boolean;
-  error: string | null;
-};
+import StarIcon from "@mui/icons-material/Star";
 
 function CompleteMission() {
   const navigate = useNavigate();
   const locationState = useLocation().state as {
-    address?: string;
-    cityRegion?: string;
-    responseTime?: string;
     volunteerName?: string;
+    volunteerRole?: string;
+    volunteerRating?: number;
   } | null;
 
-  const [realLocation, setRealLocation] = useState<LocationState>({
-    address: null,
-    cityRegion: null,
-    loading: true,
-    error: null,
-  });
+  const [rating, setRating] = useState<number>(0);
+  const [hoveredRating, setHoveredRating] = useState<number>(0);
 
-  // Prefer passed state, then real location, then placeholders
-  const locationText =
-    locationState?.address ??
-    realLocation.address ??
-    (realLocation.loading ? "..." : realLocation.error ?? "Location unavailable");
-  const cityRegion =
-    locationState?.cityRegion ?? realLocation.cityRegion ?? (realLocation.loading ? "" : null);
-  const responseTime = locationState?.responseTime ?? "3 minutes";
   const volunteerName = locationState?.volunteerName ?? "Sarah Martinez";
-
-  // Get real user location (used when no location passed via navigation state)
-  useEffect(() => {
-    if (locationState?.address != null) {
-      setRealLocation((prev) => ({ ...prev, loading: false }));
-      return;
-    }
-    if (!navigator.geolocation) {
-      setRealLocation((prev) => ({
-        ...prev,
-        loading: false,
-        error: "Geolocation not supported",
-      }));
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords;
-        try {
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`,
-            { headers: { "Accept-Language": "en" } }
-          );
-          const data = await res.json();
-          const addr = data.address;
-          const road = addr?.road || addr?.street || "";
-          const house = addr?.house_number || "";
-          const address = [house, road].filter(Boolean).join(" ") || data.display_name?.split(",")[0] || null;
-          const city = addr?.city || addr?.town || addr?.village || addr?.municipality || "";
-          const state = addr?.state || addr?.county || "";
-          const cityRegion = [city, state].filter(Boolean).join(", ") || null;
-          setRealLocation((prev) => ({
-            ...prev,
-            loading: false,
-            address: address ?? `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`,
-            cityRegion,
-          }));
-        } catch {
-          setRealLocation((prev) => ({
-            ...prev,
-            loading: false,
-            address: `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`,
-            cityRegion: "Coordinates",
-          }));
-        }
-      },
-      (err) => {
-        setRealLocation((prev) => ({
-          ...prev,
-          loading: false,
-          error: err.message || "Unable to get location",
-        }));
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
-    );
-  }, [locationState?.address]);
+  const volunteerRole = locationState?.volunteerRole ?? "Certified First Responder";
+  const volunteerRating = locationState?.volunteerRating ?? 4.8;
 
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col">
@@ -146,44 +70,66 @@ function CompleteMission() {
           The emergency has been successfully resolved.
         </p>
 
-        {/* Info panels */}
-        <div className="w-full max-w-2xl grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">
-          <div className="border border-red-500/60 rounded-xl p-4 flex flex-col items-center text-center">
-            <LocationOnIcon className="text-red-500 mb-2" fontSize="medium" />
-            <span className="text-gray-400 text-xs font-medium uppercase tracking-wide mb-1">
-              Location
-            </span>
-            <span
-              className={`text-sm font-medium ${realLocation.error ? "text-amber-400" : "text-white"}`}
-            >
-              {locationText}
-            </span>
-            {cityRegion && (
-              <span className="text-gray-500 text-xs mt-0.5">{cityRegion}</span>
-            )}
-          </div>
-          <div className="border border-red-500/60 rounded-xl p-4 flex flex-col items-center text-center">
-            <AccessTimeIcon className="text-red-500 mb-2" fontSize="medium" />
-            <span className="text-gray-400 text-xs font-medium uppercase tracking-wide mb-1">
-              Response Time
-            </span>
-            <span className="text-white text-sm font-medium">{responseTime}</span>
-          </div>
-          <div className="border border-red-500/60 rounded-xl p-4 flex flex-col items-center text-center">
-            <PersonOutlineIcon className="text-red-500 mb-2" fontSize="medium" />
-            <span className="text-gray-400 text-xs font-medium uppercase tracking-wide mb-1">
-              Volunteer
-            </span>
-            <span className="text-white text-sm font-medium">{volunteerName}</span>
+        {/* Volunteer Profile */}
+        <div className="w-full max-w-xs mb-8">
+          <div className="border border-red-500/60 rounded-xl p-6 flex flex-col items-center text-center">
+            {/* Avatar */}
+            <div className="w-16 h-16 rounded-full bg-gray-800 flex items-center justify-center mb-3 border-2 border-red-500/30">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-white">
+                <path d="M20 21V19C20 17.9391 19.5786 16.9217 18.8284 16.1716C18.0783 15.4214 17.0609 15 16 15H8C6.93913 15 5.92172 15.4214 5.17157 16.1716C4.42143 16.9217 4 17.9391 4 19V21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                <circle cx="12" cy="7" r="4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+            
+            {/* Name */}
+            <h3 className="text-white font-semibold text-lg mb-1">{volunteerName}</h3>
+            
+            {/* Role */}
+            <p className="text-gray-400 text-sm mb-3">{volunteerRole}</p>
+            
+            {/* Rating */}
+            <div className="flex items-center gap-1.5">
+              <StarIcon className="text-amber-400" sx={{ fontSize: 18 }} />
+              <span className="text-gray-300 text-sm font-medium">{volunteerRating}</span>
+              <span className="text-gray-500 text-xs">(50+ responses)</span>
+            </div>
           </div>
         </div>
 
+        {/* Star Rating */}
+        <div className="mb-8 flex flex-col items-center">
+          <p className="text-gray-400 text-sm mb-3">Rate your volunteer</p>
+          <div className="flex items-center gap-1">
+            {[1, 2, 3, 4, 5].map((star) => (
+              <button
+                key={star}
+                type="button"
+                onClick={() => setRating(star)}
+                onMouseEnter={() => setHoveredRating(star)}
+                onMouseLeave={() => setHoveredRating(0)}
+                className="transition-transform hover:scale-110 active:scale-95"
+                aria-label={`Rate ${star} star${star !== 1 ? "s" : ""}`}
+              >
+                <StarIcon
+                  className={`transition-colors ${
+                    star <= (hoveredRating || rating)
+                      ? "text-amber-400"
+                      : "text-gray-600"
+                  }`}
+                  sx={{ fontSize: 32 }}
+                />
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Back to Home Button */}
         <button
           type="button"
           onClick={() => navigate("/")}
           className="w-full max-w-xs py-3 px-6 rounded-lg bg-red-500 hover:bg-red-600 text-white font-semibold transition-colors"
         >
-          Return Home
+          Back to Home
         </button>
       </main>
     </div>

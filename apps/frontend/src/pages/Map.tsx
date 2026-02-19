@@ -174,6 +174,10 @@ function MapPage() {
     : [0, 20];
   const initialZoom = userLocation ? defaultZoom : 2;
 
+  const handleCallContact = () => {
+    navigate("/voicecall");
+  };
+
   return (
     <div className="h-screen flex bg-gray-950">
       <div className="flex-1 relative min-w-0">
@@ -247,10 +251,11 @@ function MapPage() {
       </div>
 
       <aside className="w-[min(380px,30%)] flex-shrink-0 bg-gray-950 flex flex-col border-l border-gray-800">
+        {/* Header */}
         <div className="p-4 flex items-center justify-between border-b border-gray-800">
           <h2 className="text-white font-medium text-lg">Volunteer Unit</h2>
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => navigate("/chat")}
             className="p-1.5 text-white/70 hover:text-white hover:bg-gray-800 rounded-full transition-colors duration-200"
             aria-label="Back"
           >
@@ -258,39 +263,43 @@ function MapPage() {
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-5">
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
+          {/* Volunteer Profile */}
           <div className="flex flex-col items-center">
-            <div className="w-12 h-12 rounded-full  flex items-center justify-center text-white font-semibold text-lg shrink-0 overflow-hidden">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-white-500">
+            <div className="w-16 h-16 rounded-full bg-gray-800 flex items-center justify-center mb-3 border-2 border-red-500/30">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-white">
                 <path d="M20 21V19C20 17.9391 19.5786 16.9217 18.8284 16.1716C18.0783 15.4214 17.0609 15 16 15H8C6.93913 15 5.92172 15.4214 5.17157 16.1716C4.42143 16.9217 4 17.9391 4 19V21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 <circle cx="12" cy="7" r="4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </div>
-            <p className="text-white font-medium text-lg">Sarah Martinez</p>
-            <p className="text-gray-400 text-base">Certified First Responder</p>
+            <h3 className="text-white font-semibold text-lg mb-1">Sarah Martinez</h3>
+            <p className="text-gray-400 text-sm mb-2">Certified First Responder</p>
+            <div className="flex items-center gap-1.5">
+              <StarIcon className="text-amber-400" sx={{ fontSize: 16 }} />
+              <span className="text-gray-300 text-sm font-medium">4.8</span>
+              <span className="text-gray-500 text-xs">(50+ responses)</span>
+            </div>
           </div>
 
-          <div className="bg-gray-800 rounded-xl px-6 py-5">
+          {/* ETA Card */}
+          <div className="bg-gray-800 rounded-xl px-5 py-4 border border-red-500/20">
             <div className="flex items-baseline justify-between mb-2">
-              <span className="text-white text-sm">ETA</span>
+              <span className="text-gray-400 text-xs font-medium uppercase tracking-wide">ETA</span>
               <span className="text-white text-2xl font-bold">3 min</span>
             </div>
-            <p className="text-gray-400 text-base">Ambulance - En route to you</p>
-            <p className="text-gray-400 text-sm">~0.8 miles away</p>
+            <p className="text-gray-300 text-sm font-medium mb-1">Ambulance - En route</p>
+            <p className="text-gray-500 text-xs">~0.8 miles away</p>
           </div>
 
-          <div className="flex items-center gap-2 text-gray-400 text-sm">
-            <StarIcon className="text-amber-400" sx={{ fontSize: 18 }} />
-            <span>4.8 rating (50+ response)</span>
-          </div>
-
+          {/* Equipment */}
           <div>
-            <p className="text-white font-medium text-lg mb-2">Equipment</p>
+            <p className="text-white font-medium text-base mb-3">Equipment</p>
             <div className="flex flex-wrap gap-2">
               {['First Aid Kit', 'AED', 'Oxygen'].map((item) => (
                 <span
                   key={item}
-                  className="bg-gray-800 text-gray-400 text-sm px-3 py-1.5 rounded-full border border-gray-700"
+                  className="bg-gray-800 text-gray-300 text-xs px-3 py-1.5 rounded-full border border-gray-700"
                 >
                   {item}
                 </span>
@@ -299,12 +308,14 @@ function MapPage() {
           </div>
         </div>
 
+        {/* Footer Button */}
         <div className="p-4 border-t border-gray-800">
           <button
-            className="w-full bg-red-500 hover:bg-red-600 text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2 transition-colors duration-200 cursor-pointer"
-            onClick={() => {}}
+            
+            className="w-full bg-red-500 hover:bg-red-600 text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 transition-colors duration-200"
+            onClick={() => handleCallContact()}
           >
-            <PhoneIcon sx={{ fontSize: 22 }} />
+            <PhoneIcon sx={{ fontSize: 20 }} />
             Call Contact
           </button>
         </div>

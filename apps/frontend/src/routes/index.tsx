@@ -13,14 +13,14 @@ export const UserRoutes = () => {
   return (
     <Routes>
       <Route path="/" element={<SOSpage />} />
-      <Route path="/login" element={<Login />} />
-      <Route path="/signup" element={<SignUp />} />
-      <Route path="/choosehelp" element={<ChooseHelp />} />
-      <Route path="/chat" element={<Chat />} />
-      <Route path="/map" element={<Map />} />
-      <Route path="/completemission" element={<CompleteMission />} />
-      <Route path="/voicecall" element={<VoiceCall />} />
-      <Route path="/videocall" element={<VideoCall />} />
+      <Route path="/Login" element={<Login />} />
+      <Route path="/SignUp" element={<SignUp />} />
+      <Route path="/ChooseHelp" element={<ChooseHelp />} />
+      <Route path="/Chat" element={<Chat />} />
+      <Route path="/Map" element={<Map />} />
+      <Route path="/CompleteMission" element={<CompleteMission />} />
+      <Route path="/VoiceCall" element={<VoiceCall />} />
+      <Route path="/VideoCall" element={<VideoCall />} />
     </Routes>
   );
 };

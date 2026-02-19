@@ -19,11 +19,6 @@ function Login() {
     console.log("Google login");
   };
 
-  const handleGitHubLogin = () => {
-    // TODO: Implement GitHub login
-    console.log("GitHub login");
-  };
-
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col">
       <Header />

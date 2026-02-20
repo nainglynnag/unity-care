@@ -6,6 +6,7 @@ import PhoneIcon from "@mui/icons-material/Phone";
 import VideocamIcon from "@mui/icons-material/Videocam";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import VolumeOffIcon from "@mui/icons-material/VolumeOff";
+import { API_BASE, authFetch } from "../lib/api";
 
 function ChooseHelp() {
   const [silentMode, setSilentMode] = useState(false);
@@ -64,6 +65,23 @@ function ChooseHelp() {
       }
     };
   }, [silentMode]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const ensureAuthenticatedSession = async () => {
+      const res = await authFetch(`${API_BASE}/auth/me`);
+      if (!res.ok && !cancelled) {
+        navigate("/login", { replace: true });
+      }
+    };
+
+    ensureAuthenticatedSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate]);
 
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col">

@@ -1,8 +1,7 @@
 import { useNavigate, Link } from "react-router-dom";
 import { useState, useEffect } from "react";
 import Header from "../components/Header";
-
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:3000/api/v1";
+import { API_BASE, setAuthTokens, setCurrentUser } from "../lib/api";
 
 function Signup() {
   const navigate = useNavigate();
@@ -14,6 +13,7 @@ function Signup() {
   const [passwordError, setPasswordError] = useState("");
   const [apiError, setApiError] = useState("");
   const [alreadyRegistered, setAlreadyRegistered] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -65,12 +65,8 @@ function Signup() {
       }
 
       const payload = json?.data;
-      if (payload?.accessToken) {
-        localStorage.setItem("accessToken", payload.accessToken);
-      }
-      if (payload?.refreshToken) {
-        localStorage.setItem("refreshToken", payload.refreshToken);
-      }
+      setAuthTokens(payload ?? {});
+      setCurrentUser(payload?.user ?? null);
       navigate("/choosehelp", { replace: true });
     } catch (err) {
       setApiError("Network error. Please check your connection and try again.");
@@ -166,7 +162,7 @@ function Signup() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
+                  placeholder="Enter your email"
                   className="w-full pl-10 pr-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
                   required
                 />
@@ -186,12 +182,12 @@ function Signup() {
                   type="tel"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  placeholder="+1234567890 (7–15 digits)"
+                  placeholder="Enter your phone number"
                   className="w-full pl-10 pr-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
                   required
                 />
               </div>
-              <p className="text-white/50 text-xs mt-1">7–15 digits; may start with +</p>
+              <p className="text-white/50 text-xs mt-1">Phone Number</p>
             </div>
 
             {/* Password Field */}
@@ -205,13 +201,32 @@ function Signup() {
                   </svg>
                 </div>
                 <input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Create a password"
-                  className="w-full pl-10 pr-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                  className="w-full pl-10 pr-12 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
                   required
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-white/60 hover:text-white"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M3 3L21 21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M10.58 10.58C10.21 10.95 10 11.46 10 12C10 13.1 10.9 14 12 14C12.54 14 13.05 13.79 13.42 13.42" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M16.68 16.69C15.32 17.52 13.71 18 12 18C7 18 2.73 14.89 1 12C1.92 10.47 3.18 9.18 4.68 8.25M9.88 5.08C10.56 5.03 11.27 5 12 5C17 5 21.27 8.11 23 11C22.49 11.85 21.88 12.63 21.2 13.31" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  ) : (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M1 12C2.73 9.11 7 6 12 6C17 6 21.27 9.11 23 12C21.27 14.89 17 18 12 18C7 18 2.73 14.89 1 12Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                </button>
               </div>
               <p className="text-white/50 text-xs mt-1 flex items-center gap-1">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">

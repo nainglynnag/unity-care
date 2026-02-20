@@ -1,20 +1,31 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Header from '../components/Header';
 import { useNavigate } from 'react-router-dom';
+import { API_BASE, authFetch } from '../lib/api';
 
 const EmergencyAlert: React.FC = () => {
   const [isAlerting, setIsAlerting] = useState(false);
   const navigate = useNavigate();
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleEmergencyClick = () => {
+  const handleEmergencyClick = async () => {
     setIsAlerting(true);
     // TODO: Implement emergency alert API call
     console.log('Emergency alert triggered!');
-    
-    // Set 3 second delay before navigating to login
+
+    let targetPath = '/login';
+    try {
+      const res = await authFetch(`${API_BASE}/auth/me`);
+      if (res.ok) {
+        targetPath = '/choosehelp';
+      }
+    } catch {
+      targetPath = '/login';
+    }
+
+    // Keep 3 second delay, then route based on auth state
     timeoutRef.current = setTimeout(() => {
-      navigate('/login');
+      navigate(targetPath);
     }, 3000);
   };
 

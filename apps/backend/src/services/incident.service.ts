@@ -5,7 +5,6 @@ import type {
   CreateIncidentInput,
   ListIncidentQuery,
 } from "../validators/incident.validator";
-import { includes } from "zod";
 
 // Create Incident
 export async function createIncident(
@@ -93,17 +92,21 @@ export async function createIncident(
 }
 
 // Get Single Incident
-// Any authenticated user can view an incident they have access to Admin/Volunteer can view all incidents, Civilians can only view their own incidents
+// Any authenticated user can view an incident they have access to.
+// Admin/Volunteer can view all incidents with full details.
+// Civilians can only view their own incidents with limited information.
 export async function getIncidentById(
   incidentId: string,
   requesterId: string,
   requesterRole: string,
 ) {
+  const isCivilian = requesterRole === "CIVILIAN";
+
   const where = {
     id: incidentId,
     deletedAt: null,
     // Civilians are scoped to their own incidents only
-    ...(requesterRole === "CIVILIAN" && { reportedBy: requesterId }),
+    ...(isCivilian && { reportedBy: requesterId }),
   };
 
   const incident = await prisma.incident.findFirst({
@@ -114,22 +117,107 @@ export async function getIncidentById(
         select: {
           id: true,
           name: true,
-          emergencyProfile: {
-            include: {
-              contacts: {
-                orderBy: { isPrimary: "desc" },
+          ...(!isCivilian && {
+            email: true,
+            phone: true,
+            emergencyProfile: {
+              include: {
+                contacts: { orderBy: { isPrimary: "desc" } },
               },
             },
+          }),
+        },
+      },
+      verifications: isCivilian
+        ? {
+            select: {
+              id: true,
+              decision: true,
+              createdAt: true,
+              verifier: { select: { name: true } },
+            },
+            orderBy: { createdAt: "desc" },
+          }
+        : {
+            include: {
+              verifier: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                },
+              },
+            },
+            orderBy: { createdAt: "desc" },
           },
-        },
-      },
-      verifications: {
-        include: {
-          verifier: { select: { id: true, name: true } },
-        },
-        orderBy: { createdAt: "desc" },
-      },
       media: true,
+      missions: isCivilian
+        ? {
+            select: {
+              id: true,
+              status: true,
+              priority: true,
+              missionType: true,
+              createdAt: true,
+              acceptedAt: true,
+              onSiteAt: true,
+              completedAt: true,
+              assignments: {
+                select: {
+                  role: true,
+                  assignee: { select: { id: true, name: true } },
+                },
+              },
+              tracking: {
+                where: {
+                  volunteer: {
+                    assignedMissions: {
+                      some: {
+                        role: "LEADER",
+                      },
+                    },
+                  },
+                },
+                orderBy: { recordedAt: "desc" },
+                select: {
+                  latitude: true,
+                  longitude: true,
+                  recordedAt: true,
+                  volunteer: { select: { id: true, name: true } },
+                },
+              },
+            },
+          }
+        : {
+            include: {
+              assignments: {
+                include: {
+                  assignee: {
+                    select: {
+                      id: true,
+                      name: true,
+                      email: true,
+                      phone: true,
+                    },
+                  },
+                },
+              },
+              tracking: {
+                orderBy: { recordedAt: "desc" },
+                select: {
+                  latitude: true,
+                  longitude: true,
+                  recordedAt: true,
+                  volunteer: { select: { id: true, name: true } },
+                },
+              },
+              logs: {
+                include: { actor: { select: { id: true, name: true } } },
+                orderBy: { createdAt: "desc" },
+              },
+              report: true,
+            },
+          },
     },
   });
 
@@ -144,7 +232,7 @@ export async function getIncidentById(
   return incident;
 }
 
-// List My Incidents
+// List My Incidents (Civilian)
 export async function listMyIncidents(
   reportedBy: string,
   query: ListIncidentQuery,
@@ -158,11 +246,57 @@ export async function listMyIncidents(
     ...(status && { status }),
   };
 
-  const [incidents, totalRecords] = await prisma.$transaction([
+  const [incidents, totalRecords] = await Promise.all([
     prisma.incident.findMany({
       where,
       include: {
         category: true,
+        media: true,
+        verifications: {
+          select: {
+            id: true,
+            decision: true,
+            createdAt: true,
+            verifier: { select: { name: true } },
+          },
+          orderBy: { createdAt: "desc" },
+        },
+        missions: {
+          select: {
+            id: true,
+            status: true,
+            priority: true,
+            missionType: true,
+            createdAt: true,
+            acceptedAt: true,
+            onSiteAt: true,
+            completedAt: true,
+            assignments: {
+              select: {
+                role: true,
+                assignee: { select: { id: true, name: true } },
+              },
+            },
+            tracking: {
+              where: {
+                volunteer: {
+                  assignedMissions: {
+                    some: {
+                      role: "LEADER",
+                    },
+                  },
+                },
+              },
+              orderBy: { recordedAt: "desc" },
+              select: {
+                latitude: true,
+                longitude: true,
+                recordedAt: true,
+                volunteer: { select: { id: true, name: true } },
+              },
+            },
+          },
+        },
         _count: { select: { verifications: true, missions: true } },
       },
       orderBy: { createdAt: "desc" },
@@ -183,7 +317,7 @@ export async function listMyIncidents(
   };
 }
 
-// List Incidents
+// List Incidents (Admin / Volunteer)
 export async function listIncidents(query: ListIncidentQuery) {
   const { status, categoryId, page, perPage } = query;
   const skip = (page - 1) * perPage;
@@ -199,7 +333,51 @@ export async function listIncidents(query: ListIncidentQuery) {
       where,
       include: {
         category: true,
-        reporter: { select: { id: true, name: true } },
+        reporter: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            emergencyProfile: {
+              include: {
+                contacts: { orderBy: { isPrimary: "desc" } },
+              },
+            },
+          },
+        },
+        media: true,
+        verifications: {
+          include: {
+            verifier: { select: { id: true, name: true, email: true } },
+          },
+          orderBy: { createdAt: "desc" },
+        },
+        missions: {
+          include: {
+            assignments: {
+              include: {
+                assignee: {
+                  select: { id: true, name: true, email: true, phone: true },
+                },
+              },
+            },
+            tracking: {
+              orderBy: { recordedAt: "desc" },
+              select: {
+                latitude: true,
+                longitude: true,
+                recordedAt: true,
+                volunteer: { select: { id: true, name: true } },
+              },
+            },
+            logs: {
+              include: { actor: { select: { id: true, name: true } } },
+              orderBy: { createdAt: "desc" },
+            },
+            report: true,
+          },
+        },
         _count: {
           select: { verifications: true, media: true, missions: true },
         },

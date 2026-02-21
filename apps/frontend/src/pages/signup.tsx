@@ -2,6 +2,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { useState, useEffect } from "react";
 import Header from "../components/Header";
 import { API_BASE, setAuthTokens, setCurrentUser } from "../lib/api";
+import { useGoogleAuth } from "../hooks/useGoogleAuth";
 
 function Signup() {
   const navigate = useNavigate();
@@ -15,6 +16,7 @@ function Signup() {
   const [alreadyRegistered, setAlreadyRegistered] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const { signInWithGoogle, isReady: googleReady, error: googleError } = useGoogleAuth();
 
   useEffect(() => {
     if (confirmPassword && password && confirmPassword !== password) {
@@ -75,9 +77,31 @@ function Signup() {
     }
   };
 
-  const handleGoogleLogin = () => {
-    // TODO: Implement Google login
-    console.log("Google signup");
+  const handleGoogleSignUp = () => {
+    signInWithGoogle(async (idToken) => {
+      setLoading(true);
+      setApiError("");
+      try {
+        const res = await fetch(`${API_BASE}/auth/google`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ idToken }),
+        });
+        const json = await res.json();
+        if (!res.ok) {
+          setApiError(json?.error?.message ?? "Google sign-up failed. Please try again.");
+          return;
+        }
+        const payload = json?.data;
+        setAuthTokens(payload ?? {});
+        setCurrentUser(payload?.user ?? null);
+        navigate("/choosehelp", { replace: true });
+      } catch {
+        setApiError("Network error. Please try again.");
+      } finally {
+        setLoading(false);
+      }
+    });
   };
 
 
@@ -113,9 +137,9 @@ function Signup() {
           <p className="text-white/70 text-sm text-center mb-8">Sign up to get started.</p>
 
           {/* Form */}
-          {apiError && (
+          {(apiError || googleError) && (
             <div className="mb-4 p-3 rounded-lg bg-red-500/20 border border-red-500/50 text-red-400 text-sm space-y-2">
-              <p>{apiError}</p>
+              <p>{apiError || googleError}</p>
               {alreadyRegistered && (
                 <p className="text-white/90">
                   Already have an account?{" "}
@@ -293,8 +317,10 @@ function Signup() {
           {/* Social Login Buttons */}
           <div className="space-y-3">
             <button
-              onClick={handleGoogleLogin}
-              className="w-full flex items-center justify-center gap-3 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white/90 py-3 px-4 rounded-lg transition-colors duration-200"
+              type="button"
+              onClick={handleGoogleSignUp}
+              disabled={!googleReady || loading}
+              className="w-full flex items-center justify-center gap-3 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white/90 py-3 px-4 rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <svg width="20" height="20" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>

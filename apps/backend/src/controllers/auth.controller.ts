@@ -4,10 +4,11 @@ import {
   registerSchema,
   loginSchema,
   refreshSchema,
+  googleAuthSchema,
 } from "../validators/auth.validator";
 import { successResponse } from "../utils/response";
 import { verifyRefreshToken } from "../utils/jwt";
-import { TokenInvalidError } from "../utils/errors";
+import { TokenInvalidError, UnauthorizedError } from "../utils/errors";
 
 // Register a new user
 export async function register(
@@ -40,6 +41,21 @@ export async function login(req: Request, res: Response, next: NextFunction) {
   }
 }
 
+// Google: exchange Google ID token for app tokens (login or signup).
+export async function googleAuth(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const { idToken } = googleAuthSchema.parse(req.body);
+    const tokens = await authService.loginOrRegisterWithGoogle(idToken);
+    return successResponse(res, tokens);
+  } catch (error) {
+    next(error);
+  }
+}
+
 // Accepts a valid refresh token in the request body and issues a new token pair.
 export async function refresh(req: Request, res: Response, next: NextFunction) {
   try {
@@ -57,12 +73,13 @@ export async function refresh(req: Request, res: Response, next: NextFunction) {
   }
 }
 
-// Me (current user)
-// Returns the decoded token payload attached by the authenticate middleware.
+// Me (current user) — returns full profile from DB so UI can show name, email, profileImageUrl.
 // Protected — requires authenticate middleware on the route.
 export async function me(req: Request, res: Response, next: NextFunction) {
   try {
-    return successResponse(res, req.user);
+    if (!req.user?.sub) return next(new UnauthorizedError());
+    const profile = await authService.getMe(req.user.sub);
+    return successResponse(res, profile);
   } catch (error) {
     next(error);
   }

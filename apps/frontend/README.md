@@ -6,6 +6,8 @@ This template provides a minimal setup to get React working in Vite with HMR and
 
 The app talks to the backend at `VITE_API_URL` (default: `http://localhost:3000/api/v1`). Copy `.env.example` to `.env` and adjust if your backend runs elsewhere.
 
+For **Google Sign-In**, set `VITE_GOOGLE_CLIENT_ID` in `.env` to your Google OAuth 2.0 Web client ID (same value as backend `GOOGLE_CLIENT_ID`). Create credentials in [Google Cloud Console](https://console.cloud.google.com/apis/credentials) and add your app origin (e.g. `http://localhost:5173`) to authorized JavaScript origins.
+
 Currently, two official plugins are available:
 
 - [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh

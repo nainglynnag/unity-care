@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { API_BASE, authFetch, clearAuthTokens, getCurrentUser } from '../lib/api';
+import { API_BASE, authFetch, clearAuthTokens, getAccessToken, getCurrentUser, setCurrentUser } from '../lib/api';
 
 type CurrentUser = {
   sub?: string;
@@ -14,8 +14,11 @@ type CurrentUser = {
 const Header: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [user, setUser] = useState<CurrentUser | null>(null);
+  const [profileImageFailed, setProfileImageFailed] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+
+  const showProfileImage = user?.profileImageUrl && !profileImageFailed;
 
   const toggleMenu = () => {
     setIsMenuOpen(!isMenuOpen);
@@ -43,12 +46,21 @@ const Header: React.FC = () => {
   }, [isMenuOpen]);
 
   useEffect(() => {
+    setProfileImageFailed(false);
+  }, [user?.id, user?.profileImageUrl]);
+
+  useEffect(() => {
     let cancelled = false;
 
     const loadCurrentUser = async () => {
       const storedUser = getCurrentUser();
       if (storedUser && !cancelled) {
         setUser(storedUser);
+      }
+
+      if (!getAccessToken()) {
+        if (!storedUser && !cancelled) setUser(null);
+        return;
       }
 
       try {
@@ -61,10 +73,9 @@ const Header: React.FC = () => {
         const json = await res.json();
         if (!cancelled) {
           const me = json?.data ?? {};
-          setUser({
-            ...storedUser,
-            ...me,
-          });
+          const nextUser = { ...storedUser, ...me };
+          setUser(nextUser);
+          setCurrentUser(nextUser);
         }
       } catch {
         if (!cancelled && !storedUser) setUser(null);
@@ -152,8 +163,14 @@ const Header: React.FC = () => {
           className="w-9 h-9 flex items-center justify-center hover:bg-gray-800 rounded-full transition-colors duration-200"
         >
           <div className="w-8 h-8 rounded-full bg-red-500 flex items-center justify-center overflow-hidden">
-            {user?.profileImageUrl ? (
-              <img src={user.profileImageUrl} alt="Profile" className="w-full h-full object-cover" />
+            {showProfileImage ? (
+              <img
+                src={user.profileImageUrl!}
+                alt=""
+                className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
+                onError={() => setProfileImageFailed(true)}
+              />
             ) : user?.name ? (
               <span className="text-white text-xs font-semibold">{getInitials(user.name)}</span>
             ) : (
@@ -173,8 +190,14 @@ const Header: React.FC = () => {
               <div className="flex flex-col items-center">
                 {/* Profile Picture */}
                 <div className="w-16 h-16 rounded-full bg-gray-600 flex items-center justify-center mb-3 overflow-hidden">
-                  {user?.profileImageUrl ? (
-                    <img src={user?.profileImageUrl} alt="Profile" className="w-full h-full object-cover" />
+                  {showProfileImage ? (
+                    <img
+                      src={user.profileImageUrl!}
+                      alt=""
+                      className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                      onError={() => setProfileImageFailed(true)}
+                    />
                   ) : user?.name ? (
                     <span className="text-white/70 text-base">{getInitials(user.name)}</span>
                   ) : (

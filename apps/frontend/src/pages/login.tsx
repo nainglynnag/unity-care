@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import Header from "../components/Header";
 import { API_BASE, setAuthTokens, setCurrentUser } from "../lib/api";
+import { useGoogleAuth } from "../hooks/useGoogleAuth";
 
 function Login() {
   const navigate = useNavigate();
@@ -12,6 +13,7 @@ function Login() {
   const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const { signInWithGoogle, isReady: googleReady, error: googleError } = useGoogleAuth();
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -53,8 +55,30 @@ function Login() {
   };
 
   const handleGoogleLogin = () => {
-    // TODO: Implement Google login
-    console.log("Google login");
+    signInWithGoogle(async (idToken) => {
+      setLoading(true);
+      setApiError("");
+      try {
+        const res = await fetch(`${API_BASE}/auth/google`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ idToken }),
+        });
+        const json = await res.json();
+        if (!res.ok) {
+          setApiError(json?.error?.message ?? "Google sign-in failed. Please try again.");
+          return;
+        }
+        const payload = json?.data;
+        setAuthTokens(payload ?? {});
+        setCurrentUser(payload?.user ?? null);
+        navigate("/choosehelp", { replace: true });
+      } catch {
+        setApiError("Network error. Please try again.");
+      } finally {
+        setLoading(false);
+      }
+    });
   };
 
   return (
@@ -89,9 +113,9 @@ function Login() {
           <p className="text-white/70 text-sm text-center mb-8">Sign in to continue to your account</p>
 
           {/* Form */}
-          {apiError && (
+          {(apiError || googleError) && (
             <div className="mb-4 p-3 rounded-lg bg-red-500/20 border border-red-500/50 text-red-400 text-sm">
-              {apiError}
+              {apiError || googleError}
             </div>
           )}
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -195,8 +219,10 @@ function Login() {
           {/* Social Login Buttons */}
           <div className="space-y-3">
             <button
+              type="button"
               onClick={handleGoogleLogin}
-              className="w-full flex items-center justify-center gap-3 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white/90 py-3 px-4 rounded-lg transition-colors duration-200"
+              disabled={!googleReady || loading}
+              className="w-full flex items-center justify-center gap-3 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white/90 py-3 px-4 rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <svg width="20" height="20" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>

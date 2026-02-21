@@ -39,7 +39,7 @@ export function requireRoles(...allowedRoles: string[]) {
     const userRole = req.user?.role;
 
     if (!userRole || !allowedRoles.includes(userRole)) {
-      return next(new ForbiddenError(allowedRoles));
+      return next(new ForbiddenError());
     }
 
     next();

@@ -44,14 +44,8 @@ export class UnauthorizedError extends AppError {
 }
 
 export class ForbiddenError extends AppError {
-  constructor(requiredRoles?: string[]) {
-    super(
-      "FORBIDDEN",
-      requiredRoles
-        ? `Access restricted to roles: ${requiredRoles.join(", ")}.`
-        : "You do not have permission to access this resource.",
-      403,
-    );
+  constructor() {
+    super("FORBIDDEN", "Access Denied.", 403);
   }
 }
 

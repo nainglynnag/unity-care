@@ -144,6 +144,45 @@ export async function getIncidentById(
   return incident;
 }
 
+// List My Incidents
+export async function listMyIncidents(
+  reportedBy: string,
+  query: ListIncidentQuery,
+) {
+  const { status, page, perPage } = query;
+  const skip = (page - 1) * perPage;
+
+  const where = {
+    reportedBy,
+    deletedAt: null,
+    ...(status && { status }),
+  };
+
+  const [incidents, totalRecords] = await prisma.$transaction([
+    prisma.incident.findMany({
+      where,
+      include: {
+        category: true,
+        _count: { select: { verifications: true, missions: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      skip,
+      take: perPage,
+    }),
+    prisma.incident.count({ where }),
+  ]);
+
+  return {
+    incidents,
+    pagination: {
+      totalRecords,
+      totalPages: Math.ceil(totalRecords / perPage),
+      currentPage: page,
+      perPage,
+    },
+  };
+}
+
 // List Incidents
 export async function listIncidents(query: ListIncidentQuery) {
   const { status, categoryId, page, perPage } = query;
@@ -304,43 +343,4 @@ function validateStatusTransition(
       400,
     );
   }
-}
-
-// List My Incidents
-export async function listMyIncidents(
-  reportedBy: string,
-  query: ListIncidentQuery,
-) {
-  const { status, page, perPage } = query;
-  const skip = (page - 1) * perPage;
-
-  const where = {
-    reportedBy,
-    deletedAt: null,
-    ...(status && { status }),
-  };
-
-  const [incidents, totalRecords] = await prisma.$transaction([
-    prisma.incident.findMany({
-      where,
-      include: {
-        category: true,
-        _count: { select: { verifications: true, missions: true } },
-      },
-      orderBy: { createdAt: "desc" },
-      skip,
-      take: perPage,
-    }),
-    prisma.incident.count({ where }),
-  ]);
-
-  return {
-    incidents,
-    pagination: {
-      totalRecords,
-      totalPages: Math.ceil(totalRecords / perPage),
-      currentPage: page,
-      perPage,
-    },
-  };
 }

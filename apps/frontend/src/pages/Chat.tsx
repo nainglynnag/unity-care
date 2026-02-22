@@ -1,51 +1,27 @@
 import { useState, useRef, useEffect } from "react";
-import CameraAltOutlinedIcon from "@mui/icons-material/CameraAltOutlined";
 import SendIcon from "@mui/icons-material/Send";
+import AttachFileIcon from "@mui/icons-material/AttachFile";
+import CloseIcon from "@mui/icons-material/Close";
 import LocationOnIcon from "@mui/icons-material/LocationOn";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import PhoneIcon from "@mui/icons-material/Phone";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
+import { getIncident, type IncidentDetail } from "../lib/incidents";
+
+type ChatAttachment = {
+  type: "image" | "video" | "file";
+  url: string;
+  name: string;
+};
 
 type Message = {
   id: string;
   text: string;
   sender: "unity" | "user";
   time: string;
+  attachments?: ChatAttachment[];
 };
-
-const initialMessages: Message[] = [
-  {
-    id: "1",
-    text: "Hello, this is Unity Care Emergency Response. I've received your alert. Are you safe right now?",
-    sender: "unity",
-    time: "10:42 AM",
-  },
-  {
-    id: "2",
-    text: "Yes, I'm safe but need assistance",
-    sender: "user",
-    time: "10:43 AM",
-  },
-  {
-    id: "3",
-    text: "Good to hear. Can you describe your situation? What kind of help do you need?",
-    sender: "unity",
-    time: "10:43 AM",
-  },
-  {
-    id: "4",
-    text: "Medical emergency - chest pain",
-    sender: "user",
-    time: "10:44 AM",
-  },
-  {
-    id: "5",
-    text: "I've dispatched a volunteer unit to your location. ETA is 3 minutes. Stay calm and remain where you are.",
-    sender: "unity",
-    time: "10:44 AM",
-  },
-];
 
 type LocationState = {
   lat: number | null;
@@ -57,9 +33,18 @@ type LocationState = {
 };
 
 function Chat() {
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
+  const locationState = useLocation().state as {
+    incidentId?: string;
+    primaryContact?: { name: string; phone: string };
+  } | null;
+  const incidentId = locationState?.incidentId;
+  const primaryContact = locationState?.primaryContact;
+  const [incident, setIncident] = useState<IncidentDetail | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [timerSeconds, setTimerSeconds] = useState(2 * 60 + 15); // 02:15
+  const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
+  const [timerStartedAt] = useState(() => new Date());
+  const [timerSeconds, setTimerSeconds] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [location, setLocation] = useState<LocationState>({
     lat: null,
@@ -70,7 +55,47 @@ function Chat() {
     error: null,
   });
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
+
+  const getAttachmentType = (file: File): "image" | "video" | "file" => {
+    if (file.type.startsWith("image/")) return "image";
+    if (file.type.startsWith("video/")) return "video";
+    return "file";
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files?.length) return;
+    const newAttachments: ChatAttachment[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const type = getAttachmentType(file);
+      newAttachments.push({
+        type,
+        url: URL.createObjectURL(file),
+        name: file.name,
+      });
+    }
+    setPendingAttachments((prev) => [...prev, ...newAttachments].slice(0, 5));
+    e.target.value = "";
+  };
+
+  const removePendingAttachment = (index: number) => {
+    setPendingAttachments((prev) => {
+      const next = prev.filter((_, i) => i !== index);
+      URL.revokeObjectURL(prev[index].url);
+      return next;
+    });
+  };
+
+  const pendingAttachmentsRef = useRef<ChatAttachment[]>([]);
+  pendingAttachmentsRef.current = pendingAttachments;
+  useEffect(() => {
+    return () => {
+      pendingAttachmentsRef.current.forEach((a) => URL.revokeObjectURL(a.url));
+    };
+  }, []);
 
 
 
@@ -133,13 +158,27 @@ function Chat() {
     );
   }, []);
 
-  // Incident timer count-up
+  // Fetch incident when incidentId is in state (from ChooseHelp)
   useEffect(() => {
-    const interval = setInterval(() => {
-      setTimerSeconds((s) => s + 1);
-    }, 1000);
+    if (!incidentId) return;
+    let cancelled = false;
+    getIncident(incidentId).then((data) => {
+      if (!cancelled) setIncident(data ?? null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [incidentId]);
+
+  // Incident timer: count elapsed seconds from when chat was opened
+  useEffect(() => {
+    const tick = () => {
+      setTimerSeconds(Math.floor((Date.now() - timerStartedAt.getTime()) / 1000));
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [timerStartedAt]);
 
   const formatTimer = (totalSeconds: number) => {
     const m = Math.floor(totalSeconds / 60);
@@ -149,7 +188,8 @@ function Chat() {
 
   const handleSend = () => {
     const trimmed = input.trim();
-    if (!trimmed) return;
+    const hasAttachments = pendingAttachments.length > 0;
+    if (!trimmed && !hasAttachments) return;
     const now = new Date();
     const timeStr = now.toLocaleTimeString("en-US", {
       hour: "numeric",
@@ -160,16 +200,30 @@ function Chat() {
       ...prev,
       {
         id: String(Date.now()),
-        text: trimmed,
+        text: trimmed || "(attachment)",
         sender: "user",
         time: timeStr,
+        attachments: hasAttachments ? [...pendingAttachments] : undefined,
       },
     ]);
     setInput("");
+    setPendingAttachments([]);
   };
 
+  const volunteerName =
+    incident?.missions?.[0]?.assignments?.[0]?.assignee?.name ?? null;
+
+  const chatState = () => (incidentId ? { incidentId, primaryContact } : undefined);
+  const handleVoiceCall = () => {
+    navigate("/voicecall", { state: chatState() });
+  };
   const handleCallContact = () => {
-    navigate("/voicecall");
+    const phone = primaryContact?.phone;
+    if (phone) {
+      window.location.href = `tel:${phone}`;
+    } else {
+      handleVoiceCall();
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -261,6 +315,31 @@ function Chat() {
                       : "bg-gray-800 text-white"
                   }`}
                 >
+                  {msg.attachments && msg.attachments.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {msg.attachments.map((att, i) => (
+                        <div key={i} className="rounded-lg overflow-hidden bg-gray-900/50">
+                          {att.type === "image" && (
+                            <a href={att.url} target="_blank" rel="noopener noreferrer" className="block">
+                              <img src={att.url} alt={att.name} className="max-h-40 max-w-full object-contain" />
+                            </a>
+                          )}
+                          {att.type === "video" && (
+                            <video src={att.url} controls className="max-h-40 max-w-full" title={att.name} />
+                          )}
+                          {att.type === "file" && (
+                            <a
+                              href={att.url}
+                              download={att.name}
+                              className="flex items-center gap-2 px-3 py-2 text-blue-400 hover:text-blue-300 text-sm"
+                            >
+                              <AttachFileIcon fontSize="small" /> {att.name}
+                            </a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <p className="text-sm leading-relaxed">{msg.text}</p>
                   <p className="text-gray-400 text-xs mt-1">{msg.time}</p>
                 </div>
@@ -271,13 +350,50 @@ function Chat() {
 
           {/* Input */}
           <div className="px-6 py-4 border-t border-gray-800 shrink-0">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,video/*,*/*"
+              multiple
+              className="hidden"
+              onChange={handleFileSelect}
+            />
+            {pendingAttachments.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-2">
+                {pendingAttachments.map((att, i) => (
+                  <div key={i} className="relative rounded-lg overflow-hidden bg-gray-800 border border-gray-700">
+                    {att.type === "image" && (
+                      <img src={att.url} alt={att.name} className="h-16 w-16 object-cover" />
+                    )}
+                    {att.type === "video" && (
+                      <video src={att.url} className="h-16 w-20 object-cover" />
+                    )}
+                    {att.type === "file" && (
+                      <div className="h-16 px-3 flex items-center gap-2 min-w-[120px]">
+                        <AttachFileIcon className="text-gray-400" fontSize="small" />
+                        <span className="text-white text-xs truncate">{att.name}</span>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => removePendingAttachment(i)}
+                      className="absolute top-0.5 right-0.5 p-0.5 rounded-full bg-black/60 text-white hover:bg-black/80"
+                      aria-label="Remove"
+                    >
+                      <CloseIcon sx={{ fontSize: 16 }} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="flex items-center gap-3 bg-gray-800 rounded-xl px-4 py-2">
               <button
                 type="button"
+                onClick={() => fileInputRef.current?.click()}
                 className="p-2 text-gray-400 hover:text-white transition-colors"
-                aria-label="Attach"
+                aria-label="Attach image, video, or file"
               >
-                <CameraAltOutlinedIcon fontSize="small" />
+                <AttachFileIcon fontSize="small" />
               </button>
               <input
                 type="text"
@@ -290,7 +406,8 @@ function Chat() {
               <button
                 type="button"
                 onClick={handleSend}
-                className="p-2 text-blue-500 hover:text-blue-400 transition-colors"
+                disabled={!input.trim() && pendingAttachments.length === 0}
+                className="p-2 text-blue-500 hover:text-blue-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 aria-label="Send"
               >
                 <SendIcon fontSize="small" />
@@ -315,6 +432,21 @@ function Chat() {
                 </button>
               </div>
 
+
+          {/* Incident details (title, category, description) */}
+          {incident && (
+            <div className="bg-gray-800 rounded-xl p-4 mb-4 shadow-lg">
+              <h3 className="text-gray-400 text-sm font-medium mb-2">Description</h3>
+              <p className="text-white font-medium mb-1">{incident.title}</p>
+              <p className="text-gray-400 text-sm mb-2">
+                Category: <span className="text-white">{incident.category.name}</span>
+              </p>
+              {incident.description && (
+                <p className="text-gray-300 text-sm whitespace-pre-wrap">{incident.description}</p>
+              )}
+            </div>
+          )}
+
           {/* Incident Timer */}
           <div className="bg-gray-800 rounded-xl p-4 mb-4 shadow-lg">
             <h3 className="text-gray-400 text-sm font-medium mb-2">Incident Timer</h3>
@@ -324,7 +456,9 @@ function Chat() {
               </span>
               <span className="text-green-500 text-sm font-medium">ACTIVE</span>
             </div>
-            <p className="text-gray-500 text-sm mt-1">Started at 10:42 AM</p>
+            <p className="text-gray-500 text-sm mt-1">
+              Started at {timerStartedAt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
+            </p>
           </div>
 
           {/* Location */}
@@ -349,7 +483,11 @@ function Chat() {
             </div>
             <button
               type="button"
-              onClick={() => navigate("/map", { state: location.lat != null && location.lng != null ? { lat: location.lat, lng: location.lng } : undefined })}
+              onClick={() => navigate("/map", {
+                state: location.lat != null && location.lng != null
+                  ? { lat: location.lat, lng: location.lng, incidentId, primaryContact }
+                  : incidentId ? { incidentId, primaryContact } : undefined,
+              })}
               className="mt-3 w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium transition-colors cursor-pointer"
             >
               <LocationOnIcon fontSize="small" />
@@ -357,27 +495,27 @@ function Chat() {
             </button>
           </div>
 
-          {/* Response Team */}
+          {/* Response Team / Contact volunteer */}
           <div className="bg-gray-800 rounded-xl p-4 mb-4 shadow-lg">
-            <h3 className="text-gray-400 text-sm font-medium mb-3">Response Team</h3>
+            <h3 className="text-gray-400 text-sm font-medium mb-3">Contact volunteer</h3>
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-full  flex items-center justify-center text-white font-semibold text-lg shrink-0 overflow-hidden">
+              <div className="w-12 h-12 rounded-full bg-gray-700 flex items-center justify-center text-white font-semibold text-lg shrink-0 overflow-hidden">
                 <svg
                   width="24"
                   height="24"
                   viewBox="0 0 24 24"
                   fill="none"
                   xmlns="http://www.w3.org/2000/svg"
-                  className="text-white-500"
+                  className="text-white"
                 >
-                <path
+                  <path
                     d="M20 21V19C20 17.9391 19.5786 16.9217 18.8284 16.1716C18.0783 15.4214 17.0609 15 16 15H8C6.93913 15 5.92172 15.4214 5.17157 16.1716C4.42143 16.9217 4 17.9391 4 19V21"
                     stroke="currentColor"
                     strokeWidth="2"
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    />
-                <circle
+                  />
+                  <circle
                     cx="12"
                     cy="7"
                     r="4"
@@ -386,22 +524,40 @@ function Chat() {
                     strokeWidth="2"
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    />
+                  />
                 </svg>
               </div>
               <div>
-                <p className="text-white font-medium">Sarah Martinez</p>
-                <p className="text-gray-400 text-sm">Emergency Coordinator</p>
+                <p className="text-white font-medium">
+                  {volunteerName ?? "Emergency coordinator"}
+                </p>
+                <p className="text-gray-400 text-sm">
+                  {volunteerName ? "Assigned volunteer" : "You can chat, call, or video call"}
+                </p>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={handleCallContact}
-              className="w-full bg-red-500 hover:bg-red-600 text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 transition-colors duration-200 cursor-pointer"
-            >
-              <PhoneIcon sx={{ fontSize: 20 }} />
-              Call Contact
-            </button>
+            {primaryContact && (
+              <div className="mb-4 pt-3 border-t border-gray-700">
+                <p className="text-gray-400 text-xs font-medium mb-1">Emergency contact</p>
+                <p className="text-white font-medium">{primaryContact.name}</p>
+                <a
+                  href={`tel:${primaryContact.phone}`}
+                  className="text-blue-400 hover:text-blue-300 text-sm"
+                >
+                  {primaryContact.phone}
+                </a>
+              </div>
+            )}
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={handleCallContact}
+                className="w-full bg-red-500 hover:bg-red-600 text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 transition-colors cursor-pointer"
+              >
+                <PhoneIcon sx={{ fontSize: 20 }} />
+                {primaryContact?.phone ? `Call ${primaryContact.name}` : "Voice call"}
+              </button>
+            </div>
           </div>
           </div>
           </div>

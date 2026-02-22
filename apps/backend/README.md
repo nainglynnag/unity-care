@@ -104,12 +104,13 @@ No request body. Returns the decoded JWT payload of the current user.
 
 ### Endpoints
 
-| Method  | Endpoint               | Role       | Description                                                                   |
-| ------- | ---------------------- | ---------- | ----------------------------------------------------------------------------- |
-| `POST`  | `/incidents`           | `CIVILIAN` | Report a new incident                                                         |
-| `GET`   | `/incidents/me`        | `CIVILIAN` | List my reported incidents                                                    |
-| `GET`   | `/incidents/:id`       | Any        | Get a single incident detail. Civilian can only view incidents they reported. |
-| `PATCH` | `/incidents/:id/close` | `CIVILIAN` | Self-close your own incident                                                  |
+| Method  | Endpoint                 | Role       | Description                                                                   |
+| ------- | ------------------------ | ---------- | ----------------------------------------------------------------------------- |
+| `POST`  | `/incidents`             | `CIVILIAN` | Report a new incident                                                         |
+| `GET`   | `/incidents/me`          | `CIVILIAN` | List my reported incidents                                                    |
+| `GET`   | `/incidents/categories`  | Any        | List active incident categories (for report form)                             |
+| `GET`   | `/incidents/:id`         | Any        | Get a single incident detail. Civilian can only view incidents they reported. |
+| `PATCH` | `/incidents/:id/close`   | `CIVILIAN` | Self-close your own incident                                                  |
 
 ---
 
@@ -120,11 +121,11 @@ No request body. Returns the decoded JWT payload of the current user.
 | Field          | Type      | Required | Rules                                                                                 |
 | -------------- | --------- | -------- | ------------------------------------------------------------------------------------- |
 | `title`        | `string`  | ✅       | Min 3 characters                                                                      |
-| `categoryId`   | `string`  | ✅       | Valid UUID of an active `IncidentCategory`                                            |
+| `categoryId`   | `string`  | ✅       | Optional. Valid UUID of an active `IncidentCategory`. If omitted, first active category is used. |
 | `latitude`     | `number`  | ✅       | Between `-90` and `90`                                                                |
 | `longitude`    | `number`  | ✅       | Between `-180` and `180`                                                              |
 | `forSelf`      | `boolean` | ✅       | `true` = reporting for yourself · `false` = reporting for someone else                |
-| `description`  | `string`  | ❌       | Free-text description                                                                 |
+| `description`  | `string`  | ✅      | Free-text description                                                                 |
 | `addressText`  | `string`  | ❌       | Human-readable address                                                                |
 | `landmark`     | `string`  | ❌       | Nearby landmark                                                                       |
 | `accuracy`     | `string`  | ❌       | `GPS` · `MANUAL` · `VERIFIED`                                                         |
@@ -163,6 +164,23 @@ No request body. Returns the decoded JWT payload of the current user.
 ```
 
 > `emergencyProfile` is `null` when `forSelf` is `false` or when the reporter has not set up a profile.
+
+---
+
+### `GET /incidents/categories`
+
+No request body. Returns active incident categories for use in the report form.
+
+**Response `200`**
+
+```json
+{
+  "data": [
+    { "id": "uuid", "name": "Medical Emergency", "description": "Injury, illness, or medical crisis" },
+    { "id": "uuid", "name": "Fire", "description": null }
+  ]
+}
+```
 
 ---
 

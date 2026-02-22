@@ -5,7 +5,7 @@ export const createIncidentSchema = z
   .object({
     title: z.string().min(3, "Title must be at least 3 characters."),
     description: z.string().optional(),
-    categoryId: z.uuid("categoryId must be a valid UUID."),
+    categoryId: z.uuid("categoryId must be a valid UUID.").optional(),
     latitude: z
       .number({ error: "Latitude is required." })
       .min(-90, "Latitude must be between -90 and 90.")

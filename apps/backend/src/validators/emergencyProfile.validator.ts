@@ -18,7 +18,7 @@ export const createEmergencyProfileSchema = z.object({
   fullName: z.string().min(2, "Full name is required."),
   dateOfBirth: z.coerce.date().optional(),
   bloodType: z
-    .enum(["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"])
+    .enum(["A", "B", "AB", "O","-"])
     .optional(),
   allergies: z.string().optional(),
   medicalConditions: z.string().optional(),

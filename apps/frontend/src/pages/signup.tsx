@@ -69,7 +69,7 @@ function Signup() {
       const payload = json?.data;
       setAuthTokens(payload ?? {});
       setCurrentUser(payload?.user ?? null);
-      navigate("/choosehelp", { replace: true });
+      navigate("/setup-profile", { replace: true, state: { fullName: fullName.trim() } });
     } catch (err) {
       setApiError("Network error. Please check your connection and try again.");
     } finally {
@@ -95,7 +95,7 @@ function Signup() {
         const payload = json?.data;
         setAuthTokens(payload ?? {});
         setCurrentUser(payload?.user ?? null);
-        navigate("/choosehelp", { replace: true });
+        navigate("/setup-profile", { replace: true, state: { fullName: payload?.user?.name } });
       } catch {
         setApiError("Network error. Please try again.");
       } finally {
@@ -103,7 +103,6 @@ function Signup() {
       }
     });
   };
-
 
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col">

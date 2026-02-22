@@ -11,8 +11,14 @@ import FlipCameraIosIcon from "@mui/icons-material/FlipCameraIos";
 
 function VideoCall() {
   const navigate = useNavigate();
-  const locationState = useLocation().state as { silentMode?: boolean } | null;
+  const locationState = useLocation().state as {
+    silentMode?: boolean;
+    incidentId?: string;
+    primaryContact?: { name: string; phone: string };
+  } | null;
   const silentMode = locationState?.silentMode ?? false;
+  const incidentId = locationState?.incidentId;
+  const primaryContact = locationState?.primaryContact;
   const [isMuted, setIsMuted] = useState(silentMode);
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
@@ -91,7 +97,9 @@ function VideoCall() {
 
 
   const NavigateToChat = () => {
-    navigate("/chat");
+    navigate("/chat", {
+      state: incidentId ? { incidentId, primaryContact } : undefined,
+    });
   };
 
   return (
@@ -158,8 +166,12 @@ function VideoCall() {
                   <circle cx="12" cy="7" r="4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </div>
-              <h2 className="text-white text-xl font-semibold mb-1">Sarah Martinez</h2>
-              <p className="text-gray-400 text-xs mb-2">Certified First Responder</p>
+              <h2 className="text-white text-xl font-semibold mb-1">
+                {incidentId ? "Volunteer" : "Sarah Martinez"}
+              </h2>
+              <p className="text-gray-400 text-xs mb-2">
+                {incidentId ? "Contacting your assigned volunteer" : "Certified First Responder"}
+              </p>
             </div>
           )}
         </div>

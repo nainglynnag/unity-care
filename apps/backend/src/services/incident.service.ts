@@ -11,25 +11,39 @@ export async function createIncident(
   reportedBy: string,
   data: CreateIncidentInput,
 ) {
-  // Verify the category exists and is active
-  const category = await prisma.incidentCategory.findUnique({
-    where: { id: data.categoryId },
-  });
-
-  if (!category) {
-    throw new AppError(
-      "CATEGORY_NOT_FOUND",
-      "The selected incident category does not exist.",
-      404,
-    );
-  }
-
-  if (!category.isActive) {
-    throw new AppError(
-      "CATEGORY_INACTIVE",
-      "The selected incident category is no longer active.",
-      400,
-    );
+  let categoryId = data.categoryId;
+  if (!categoryId) {
+    const defaultCategory = await prisma.incidentCategory.findFirst({
+      where: { isActive: true },
+      orderBy: { name: "asc" },
+      select: { id: true },
+    });
+    if (!defaultCategory) {
+      throw new AppError(
+        "NO_CATEGORY",
+        "No incident category is available. Please contact support.",
+        503,
+      );
+    }
+    categoryId = defaultCategory.id;
+  } else {
+    const category = await prisma.incidentCategory.findUnique({
+      where: { id: categoryId },
+    });
+    if (!category) {
+      throw new AppError(
+        "CATEGORY_NOT_FOUND",
+        "The selected incident category does not exist.",
+        404,
+      );
+    }
+    if (!category.isActive) {
+      throw new AppError(
+        "CATEGORY_INACTIVE",
+        "The selected incident category is no longer active.",
+        400,
+      );
+    }
   }
 
   let emergencyProfile = null;
@@ -59,7 +73,7 @@ export async function createIncident(
         addressText: data.addressText,
         landmark: data.landmark,
         accuracy: data.accuracy,
-        categoryId: data.categoryId,
+        categoryId,
         reportedBy,
         status: IncidentStatus.REPORTED,
       },
@@ -89,6 +103,18 @@ export async function createIncident(
   });
 
   return { incident, emergencyProfile };
+}
+
+// List active incident categories (for civilian report form)
+export async function listIncidentCategories() {
+  const categories = await prisma.incidentCategory.findMany({
+    where: { isActive: true },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, description: true },
+  });
+  const other = categories.filter((c) => c.name === "Other");
+  const rest = categories.filter((c) => c.name !== "Other");
+  return [...rest, ...other];
 }
 
 // Get Single Incident

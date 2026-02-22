@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import PhoneIcon from "@mui/icons-material/Phone";
 import MicIcon from "@mui/icons-material/Mic";
 import MicOffIcon from "@mui/icons-material/MicOff";
@@ -8,6 +8,12 @@ import VolumeOffIcon from "@mui/icons-material/VolumeOff";
 
 function VoiceCall() {
   const navigate = useNavigate();
+  const locationState = useLocation().state as {
+    incidentId?: string;
+    primaryContact?: { name: string; phone: string };
+  } | null;
+  const incidentId = locationState?.incidentId;
+  const primaryContact = locationState?.primaryContact;
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
   const [callDuration, setCallDuration] = useState(0);
@@ -40,7 +46,9 @@ function VoiceCall() {
   };
 
   const NavigateToChat = () => {
-    navigate("/chat");
+    navigate("/chat", {
+      state: incidentId ? { incidentId, primaryContact } : undefined,
+    });
   };
 
   return (
@@ -109,8 +117,12 @@ function VoiceCall() {
             </div>
 
             {/* Volunteer Info */}
-            <h2 className="text-white text-2xl font-semibold mb-1">Sarah Martinez</h2>
-            <p className="text-gray-400 text-sm mb-2">Certified First Responder</p>
+            <h2 className="text-white text-2xl font-semibold mb-1">
+              {incidentId ? "Volunteer" : "Sarah Martinez"}
+            </h2>
+            <p className="text-gray-400 text-sm mb-2">
+              {incidentId ? "Contacting your assigned volunteer" : "Certified First Responder"}
+            </p>
             <p className="text-gray-500 text-xs mb-8">{formatTime(callDuration)}</p>
           </>
         )}

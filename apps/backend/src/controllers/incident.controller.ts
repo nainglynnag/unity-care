@@ -97,6 +97,20 @@ export async function listMyIncidents(
   }
 }
 
+// List active incident categories (any authenticated user, for report form)
+export async function listIncidentCategories(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const categories = await incidentService.listIncidentCategories();
+    return successResponse(res, categories);
+  } catch (error) {
+    next(error);
+  }
+}
+
 // Get incident by id
 // Any authenticated user can view a specific incident.
 export async function getIncident(

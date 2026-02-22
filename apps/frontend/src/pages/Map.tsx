@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Map as MapcnMap,
   MapControls,
@@ -97,16 +97,32 @@ function MapFitBounds({
 
 function MapPage() {
   const navigate = useNavigate();
+  const locationState = useLocation().state as {
+    lat?: number;
+    lng?: number;
+    incidentId?: string;
+    primaryContact?: { name: string; phone: string };
+  } | null;
+  const incidentId = locationState?.incidentId;
+  const primaryContact = locationState?.primaryContact;
   const [userLocation, setUserLocation] = useState<[number, number] | null>(
-    null
+    locationState?.lat != null && locationState?.lng != null
+      ? [locationState.lat, locationState.lng]
+      : null
   );
-  const [locationLoading, setLocationLoading] = useState(true);
+  const [locationLoading, setLocationLoading] = useState(
+    !(locationState?.lat != null && locationState?.lng != null)
+  );
   const [locationError, setLocationError] = useState<string | null>(null);
   const [roadRouteCoords, setRoadRouteCoords] = useState<[number, number][]>(
     []
   );
 
   useEffect(() => {
+    if (locationState?.lat != null && locationState?.lng != null) {
+      setLocationLoading(false);
+      return;
+    }
     if (!navigator.geolocation) {
       setLocationError('Geolocation is not supported by your browser.');
       setLocationLoading(false);
@@ -124,7 +140,7 @@ function MapPage() {
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
     );
-  }, []);
+  }, [locationState?.lat, locationState?.lng]);
 
   const ambulancePositionOffset = userLocation
     ? getCarPositionNearUser(userLocation[0], userLocation[1])
@@ -175,7 +191,9 @@ function MapPage() {
   const initialZoom = userLocation ? defaultZoom : 2;
 
   const handleCallContact = () => {
-    navigate("/voicecall");
+    navigate("/voicecall", {
+      state: incidentId ? { incidentId, primaryContact } : undefined,
+    });
   };
 
   return (
@@ -255,7 +273,11 @@ function MapPage() {
         <div className="p-4 flex items-center justify-between border-b border-gray-800">
           <h2 className="text-white font-medium text-lg">Volunteer Unit</h2>
           <button
-            onClick={() => navigate("/chat")}
+            onClick={() =>
+              navigate("/chat", {
+                state: incidentId ? { incidentId, primaryContact } : undefined,
+              })
+            }
             className="p-1.5 text-white/70 hover:text-white hover:bg-gray-800 rounded-full transition-colors duration-200"
             aria-label="Back"
           >

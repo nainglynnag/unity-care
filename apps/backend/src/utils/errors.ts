@@ -75,3 +75,82 @@ export class UserAlreadyRegisteredError extends AppError {
     );
   }
 }
+
+// Volunteer Application
+export class AgencyNotFoundError extends AppError {
+  constructor() {
+    super("AGENCY_NOT_FOUND", "The selected agency could not be found.", 404);
+  }
+}
+
+export class ApplicationAlreadyActiveError extends AppError {
+  constructor(agencyName: string) {
+    super(
+      "APPLICATION_ALREADY_ACTIVE",
+      `You already have an active application with ${agencyName}.`,
+      409,
+    );
+  }
+}
+
+export class ApplicationNotFoundError extends AppError {
+  constructor() {
+    super(
+      "APPLICATION_NOT_FOUND",
+      "The requested application could not be found.",
+      404,
+    );
+  }
+}
+
+export class ApplicationNotEditableError extends AppError {
+  constructor() {
+    super(
+      "APPLICATION_NOT_EDITABLE",
+      "This application can no longer be edited.",
+      400,
+    );
+  }
+}
+
+export class CannotWithdrawError extends AppError {
+  constructor() {
+    super(
+      "CANNOT_WITHDRAW_AFTER_REVIEW",
+      "Applications cannot be withdrawn now. Contact the agency directly for your application.",
+      400,
+    );
+  }
+}
+
+// Volunteer Profile
+export class InvalidSkillIdsError extends AppError {
+  constructor(unknownIds: string[]) {
+    super(
+      "INVALID_SKILL_IDS",
+      "One or more skill IDs are invalid.",
+      400,
+      unknownIds.map((id) => ({
+        field: "skillIds",
+        value: id,
+        message: "Skill not found.",
+      })),
+    );
+  }
+}
+
+export class ProfileNotFoundError extends AppError {
+  constructor() {
+    super("PROFILE_NOT_FOUND", "Volunteer profile not found.", 404);
+  }
+}
+
+export class NotAnApprovedVolunteerError extends AppError {
+  constructor() {
+    super(
+      "NOT_AN_APPROVED_VOLUNTEER",
+      "You must be an approved volunteer to perform this action.",
+      403,
+    );
+  }
+}

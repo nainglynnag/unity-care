@@ -217,6 +217,245 @@ Self-close an incident you reported. Only allowed when the current status is `RE
 
 ---
 
+## Emergency Profiles
+
+> All emergency profile routes require authentication.
+> Civilians can only access their own emergency profile.
+
+### Endpoints
+
+| Method  | Endpoint                  | Role                | Description                      |
+| ------- | ------------------------- | ------------------- | -------------------------------- |
+| `GET`   | `/emergency-profiles/me`  | `CIVILIAN`          | Get my emergency profile         |
+| `POST`  | `/emergency-profiles/me`  | `CIVILIAN`          | Create my emergency profile      |
+| `PATCH` | `/emergency-profiles/me`  | `CIVILIAN`          | Update my emergency profile      |
+| `GET`   | `/emergency-profiles`     | `ADMIN`             | Get all emergency profiles       |
+| `GET`   | `/emergency-profiles/:id` | `ADMIN / VOLUNTEER` | Get a specific emergency profile |
+
+---
+
+### `GET /emergency-profiles/me`
+
+No request body.
+
+**Response `200`**
+
+```json
+{
+  "data": {
+    "id": "uuid",
+    "fullName": "Anna Lee",
+    "dateOfBirth": "1990-01-01T00:00:00.000Z",
+    "bloodType": "O+",
+    "allergies": "Penicillin",
+    "medicalConditions": null,
+    "medications": null,
+    "consentGivenAt": "2026-01-01T00:00:00.000Z",
+    "contacts": [
+      {
+        "id": "uuid",
+        "name": "Sarah Lee",
+        "phone": "+66812345678",
+        "relationship": "Sister",
+        "isPrimary": true
+      }
+    ]
+  }
+}
+```
+
+---
+
+### `POST /emergency-profiles/me`
+
+**Request Body**
+
+| Field               | Type      | Required | Rules             |
+| ------------------- | --------- | -------- | ----------------- |
+| `fullName`          | `string`  | ✅       | Min 2 characters  |
+| `dateOfBirth`       | `string`  | ❌       | Valid date string |
+| `bloodType`         | `string`  | ❌       | Max 5 characters  |
+| `allergies`         | `string`  | ❌       | Free-text         |
+| `medicalConditions` | `string`  | ❌       | Free-text         |
+| `medications`       | `string`  | ❌       | Free-text         |
+| `consentGiven`      | `boolean` | ✅       | Must be `true`    |
+
+**Response `201`** — Returns the created profile.
+
+---
+
+### `PATCH /emergency-profiles/me`
+
+**Request Body**
+
+Same fields as `POST /emergency-profiles/me`, but all are optional. `consentGiven` cannot be revoked once given.
+
+**Response `200`** — Returns the updated profile.
+
+---
+
+## Volunteer Applications
+
+> All volunteer application routes require authentication.
+
+### Endpoints
+
+| Method  | Endpoint                     | Role       | Description                                                        |
+| ------- | ---------------------------- | ---------- | ------------------------------------------------------------------ |
+| `POST`  | `/applications`              | `CIVILIAN` | Submit a new volunteer application                                 |
+| `GET`   | `/applications/me`           | `CIVILIAN` | List my volunteer applications                                     |
+| `GET`   | `/applications/:id`          | Any        | Get a single application detail. Civilian can only view their own. |
+| `PATCH` | `/applications/:id`          | `CIVILIAN` | Update a pending application                                       |
+| `PATCH` | `/applications/:id/withdraw` | `CIVILIAN` | Withdraw a pending application                                     |
+
+---
+
+### `POST /applications`
+
+**Request Body**
+
+| Field              | Type       | Required | Rules                                                                                              |
+| ------------------ | ---------- | -------- | -------------------------------------------------------------------------------------------------- |
+| `agencyId`         | `string`   | ✅       | Valid UUID of an `Agency`                                                                          |
+| `skillIds`         | `string[]` | ✅       | Array of valid `Skill` UUIDs (min 1)                                                               |
+| `dateOfBirth`      | `string`   | ✅       | Valid date string. Must be 18+ years old.                                                          |
+| `nationalIdNumber` | `string`   | ✅       | Min 5 characters                                                                                   |
+| `nationalIdUrl`    | `string`   | ✅       | Valid URL                                                                                          |
+| `address`          | `string`   | ✅       | Min 5 characters                                                                                   |
+| `hasTransport`     | `boolean`  | ✅       | `true` or `false`                                                                                  |
+| `experience`       | `string`   | ❌       | Free-text                                                                                          |
+| `consentGiven`     | `boolean`  | ✅       | Must be `true`                                                                                     |
+| `certificates`     | `array`    | ❌       | Max 10 items. Each item: `{ name: string, fileUrl: string, issuedBy?: string, issuedAt?: string }` |
+
+**Response `201`** — Returns the created application with nested certificates and agency details.
+
+---
+
+### `GET /applications/me`
+
+No request body.
+
+**Response `200`** — List of the authenticated user's applications, ordered by `submittedAt` descending.
+
+---
+
+### `GET /applications/:id`
+
+No request body.
+
+- **ADMIN / VOLUNTEER** — can view any application.
+- **CIVILIAN** — can only view their own applications. Returns `403` if the application belongs to another user.
+
+**Response `200`** — Full application detail including `certificates`, `agency`, and `applicant`.
+
+---
+
+### `PATCH /applications/:id`
+
+Update an application. Only allowed when the current status is `PENDING`.
+
+**Request Body**
+
+Same fields as `POST /applications`, but all are optional. `consentGiven` cannot be revoked once given.
+
+**Response `200`** — Returns the updated application.
+
+---
+
+### `PATCH /applications/:id/withdraw`
+
+Withdraw an application. Only allowed when the current status is `PENDING`.
+
+No request body.
+
+**Response `200`**
+
+```json
+{
+  "data": {
+    "application": {
+      "id": "uuid",
+      "status": "WITHDRAWN"
+    },
+    "message": "Application withdrawn. You may now apply to another agency."
+  }
+}
+```
+
+---
+
+## Volunteer Profile
+
+> All volunteer profile routes require authentication and the `VOLUNTEER` role.
+
+### Endpoints
+
+| Method  | Endpoint                              | Role        | Description                   |
+| ------- | ------------------------------------- | ----------- | ----------------------------- |
+| `GET`   | `/volunteer-profiles/me`              | `VOLUNTEER` | Get my volunteer profile      |
+| `PATCH` | `/volunteer-profiles/me`              | `VOLUNTEER` | Update my volunteer profile   |
+| `PATCH` | `/volunteer-profiles/me/availability` | `VOLUNTEER` | Update my availability status |
+
+---
+
+### `GET /volunteer-profiles/me`
+
+No request body.
+
+**Response `200`**
+
+```json
+{
+  "data": {
+    "userId": "uuid",
+    "isAvailable": true,
+    "availabilityRadiusKm": 10,
+    "lastKnownLatitude": 13.7563,
+    "lastKnownLongitude": 100.5018,
+    "updatedAt": "2026-01-01T00:00:00.000Z",
+    "skills": [
+      {
+        "skill": {
+          "id": "uuid",
+          "name": "First Aid"
+        }
+      }
+    ]
+  }
+}
+```
+
+---
+
+### `PATCH /volunteer-profiles/me`
+
+**Request Body**
+
+| Field                  | Type       | Required | Rules                                                                |
+| ---------------------- | ---------- | -------- | -------------------------------------------------------------------- |
+| `availabilityRadiusKm` | `number`   | ❌       | Between `1` and `500`                                                |
+| `lastKnownLatitude`    | `number`   | ❌       | Between `-90` and `90`. Must be provided with `lastKnownLongitude`.  |
+| `lastKnownLongitude`   | `number`   | ❌       | Between `-180` and `180`. Must be provided with `lastKnownLatitude`. |
+| `skillIds`             | `string[]` | ❌       | Array of valid `Skill` UUIDs                                         |
+
+**Response `200`** — Returns the updated profile.
+
+---
+
+### `PATCH /volunteer-profiles/me/availability`
+
+**Request Body**
+
+| Field         | Type      | Required | Rules                                                       |
+| ------------- | --------- | -------- | ----------------------------------------------------------- |
+| `isAvailable` | `boolean` | ✅       | `true` = online · `false` = offline                         |
+| `latitude`    | `number`  | ❌       | Between `-90` and `90`. Must be provided with `longitude`.  |
+| `longitude`   | `number`  | ❌       | Between `-180` and `180`. Must be provided with `latitude`. |
+
+**Response `200`** — Returns the updated profile.
+
+---
+
 ## Error Responses
 
 All errors follow the same shape:
@@ -233,15 +472,23 @@ All errors follow the same shape:
 }
 ```
 
-| HTTP  | Code                        | Cause                                                                        |
-| ----- | --------------------------- | ---------------------------------------------------------------------------- |
-| `401` | `UNAUTHORIZED`              | No token provided                                                            |
-| `401` | `INVALID_TOKEN`             | Token is malformed or expired                                                |
-| `401` | `INVALID_CREDENTIALS`       | Wrong email or password                                                      |
-| `403` | `FORBIDDEN`                 | Role not permitted for this route                                            |
-| `403` | `ACCOUNT_INACTIVE`          | Account has been deactivated                                                 |
-| `404` | `INCIDENT_NOT_FOUND`        | Incident does not exist or does not belong to you                            |
-| `404` | `CATEGORY_NOT_FOUND`        | `categoryId` does not match any active category                              |
-| `409` | `DUPLICATE_FIELD`           | Email or phone already registered                                            |
-| `400` | `INVALID_STATUS_TRANSITION` | Cannot close incident from its current state                                 |
-| `422` | `VALIDATION_ERROR`          | Request body failed schema validation · `details[]` lists each failing field |
+| HTTP  | Code                           | Cause                                                                        |
+| ----- | ------------------------------ | ---------------------------------------------------------------------------- |
+| `401` | `UNAUTHORIZED`                 | No token provided                                                            |
+| `401` | `INVALID_TOKEN`                | Token is malformed or expired                                                |
+| `401` | `INVALID_CREDENTIALS`          | Wrong email or password                                                      |
+| `403` | `FORBIDDEN`                    | Role not permitted for this route                                            |
+| `403` | `ACCOUNT_INACTIVE`             | Account has been deactivated                                                 |
+| `403` | `NOT_AN_APPROVED_VOLUNTEER`    | User must be an approved volunteer                                           |
+| `404` | `INCIDENT_NOT_FOUND`           | Incident does not exist or does not belong to you                            |
+| `404` | `CATEGORY_NOT_FOUND`           | `categoryId` does not match any active category                              |
+| `404` | `AGENCY_NOT_FOUND`             | The selected agency does not exist                                           |
+| `404` | `APPLICATION_NOT_FOUND`        | The requested application could not be found                                 |
+| `404` | `PROFILE_NOT_FOUND`            | Volunteer profile not found                                                  |
+| `409` | `DUPLICATE_FIELD`              | Email or phone already registered                                            |
+| `409` | `APPLICATION_ALREADY_ACTIVE`   | User already has an active application with an agency                        |
+| `400` | `INVALID_STATUS_TRANSITION`    | Cannot close incident from its current state                                 |
+| `400` | `APPLICATION_NOT_EDITABLE`     | Application is no longer editable                                            |
+| `400` | `CANNOT_WITHDRAW_AFTER_REVIEW` | Applications cannot be withdrawn after review has started                    |
+| `400` | `INVALID_SKILL_IDS`            | One or more skill IDs do not exist                                           |
+| `422` | `VALIDATION_ERROR`             | Request body failed schema validation · `details[]` lists each failing field |

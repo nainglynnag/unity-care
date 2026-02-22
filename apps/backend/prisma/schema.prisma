@@ -150,18 +150,45 @@ model VolunteerSkill {
 }
 
 model VolunteerApplication {
-  id          String            @id @default(uuid())
-  userId      String
-  agencyId    String
-  status      ApplicationStatus
-  reviewNote  String?
-  reviewedBy  String?
-  submittedAt DateTime          @default(now())
-  reviewedAt  DateTime?
+  id               String    @id @default(uuid())
+  userId           String
+  agencyId         String
+  dateOfBirth      DateTime?
+  nationalIdNumber String?
+  nationalIdUrl    String?
+  address          String?
+  hasTransport     Boolean?
+  experience       String?
+  consentGiven     Boolean   @default(false)
+  consentGivenAt   DateTime?
+
+  certificates ApplicationCertificate[]
+  status       ApplicationStatus
+  reviewNote   String?
+  reviewedBy   String?
+  submittedAt  DateTime                 @default(now())
+  reviewedAt   DateTime?
 
   applicant User   @relation("VolunteerApplicant", fields: [userId], references: [id])
   reviewer  User?  @relation("VolunteerReviewer", fields: [reviewedBy], references: [id])
   agency    Agency @relation(fields: [agencyId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+}
+
+model ApplicationCertificate {
+  id            String    @id @default(uuid())
+  applicationId String
+  name          String
+  fileUrl       String
+  issuedBy      String?
+  issuedAt      DateTime?
+  createdAt     DateTime  @default(now())
+
+  application VolunteerApplication @relation(fields: [applicationId], references: [id])
+
+  @@index([applicationId])
 }
 
 // Incident

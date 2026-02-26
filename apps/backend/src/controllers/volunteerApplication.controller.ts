@@ -3,8 +3,10 @@ import * as volunteerApplicationService from "../services/volunteerApplication.s
 import {
   submitApplicationSchema,
   updateApplicationSchema,
+  reviewApplicationSchema,
+  listApplicationsQuerySchema,
 } from "../validators/volunteerApplication.validator";
-import { successResponse } from "../utils/response";
+import { successResponse, paginatedResponse } from "../utils/response";
 
 export interface ApplicationParams extends Record<string, string> {
   id: string;
@@ -44,6 +46,26 @@ export async function getMyApplications(
   }
 }
 
+// GET /applications
+export async function listApplications(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const query = listApplicationsQuerySchema.parse(req.query);
+    const { applications, pagination } =
+      await volunteerApplicationService.listApplications(
+        req.user!.sub,
+        req.user!.role,
+        query,
+      );
+    return paginatedResponse(res, applications, pagination, {});
+  } catch (error) {
+    next(error);
+  }
+}
+
 // GET /applications/:id
 export async function getApplication(
   req: Request<ApplicationParams>,
@@ -52,6 +74,24 @@ export async function getApplication(
 ) {
   try {
     const result = await volunteerApplicationService.getApplicationById(
+      req.params.id,
+      req.user!.sub,
+      req.user!.role,
+    );
+    return successResponse(res, result);
+  } catch (error) {
+    next(error);
+  }
+}
+
+// PATCH /applications/:id/start-review
+export async function startReview(
+  req: Request<ApplicationParams>,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const result = await volunteerApplicationService.startReview(
       req.params.id,
       req.user!.sub,
       req.user!.role,
@@ -91,6 +131,29 @@ export async function withdrawApplication(
     const result = await volunteerApplicationService.withdrawApplication(
       req.params.id,
       req.user!.sub,
+    );
+    return successResponse(res, result);
+  } catch (error) {
+    next(error);
+  }
+}
+
+// PATCH /applications/:id/review
+// SUPERADMIN: any application
+// COORDINATOR/DIRECTOR: own agency only
+// ADMIN/CIVILIAN/MEMBER: blocked in service
+export async function reviewApplication(
+  req: Request<ApplicationParams>,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const data = reviewApplicationSchema.parse(req.body);
+    const result = await volunteerApplicationService.reviewApplication(
+      req.params.id,
+      req.user!.sub,
+      req.user!.role,
+      data,
     );
     return successResponse(res, result);
   } catch (error) {

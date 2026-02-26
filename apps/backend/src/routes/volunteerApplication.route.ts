@@ -20,10 +20,31 @@ router.get(
   volunteerApplicationController.getMyApplications,
 );
 
-// CIVILIAN own / ADMIN any
+// SUPERADMIN / ADMIN / COORDINATOR / DIRECTOR — list all applications
+router.get(
+  "/",
+  requireRoles("SUPERADMIN", "ADMIN", "VOLUNTEER"),
+  volunteerApplicationController.listApplications,
+);
+
+// Any authenticated user — scoped in service
 router.get<ApplicationParams>(
   "/:id",
   volunteerApplicationController.getApplication,
+);
+
+// SUPERADMIN / COORDINATOR / DIRECTOR — claim an application for review
+router.patch<ApplicationParams>(
+  "/:id/start-review",
+  requireRoles("SUPERADMIN", "VOLUNTEER"),
+  volunteerApplicationController.startReview,
+);
+
+// SUPERADMIN / COORDINATOR / DIRECTOR — approve or reject
+router.patch<ApplicationParams>(
+  "/:id/review",
+  requireRoles("SUPERADMIN", "VOLUNTEER"),
+  volunteerApplicationController.reviewApplication,
 );
 
 // CIVILIAN only

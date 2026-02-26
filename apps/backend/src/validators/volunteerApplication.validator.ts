@@ -79,5 +79,26 @@ export const updateApplicationSchema = z
 
 export const withdrawApplicationSchema = z.object({});
 
+// List Applications
+export const listApplicationsQuerySchema = z.object({
+  agencyId: z.uuid().optional(),
+  status: z
+    .enum(["PENDING", "UNDER_REVIEW", "APPROVED", "REJECTED", "WITHDRAWN"])
+    .optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  perPage: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+export const reviewApplicationSchema = z
+  .object({
+    decision: z.enum(["APPROVED", "REJECTED"]),
+    reviewNote: z.string().min(5).optional(),
+  })
+  .refine((data) => !(data.decision === "REJECTED" && !data.reviewNote), {
+    message: "A review note is required when rejecting an application.",
+    path: ["reviewNote"],
+  });
+
 export type SubmitApplicationInput = z.infer<typeof submitApplicationSchema>;
 export type UpdateApplicationInput = z.infer<typeof updateApplicationSchema>;
+export type ReviewApplicationInput = z.infer<typeof reviewApplicationSchema>;

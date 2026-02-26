@@ -20,6 +20,13 @@ router.get(
   volunteerApplicationController.getMyApplications,
 );
 
+// ADMIN / COORDINATOR / DIRECTOR — list all applications
+router.get(
+  "/",
+  requireRoles("SUPERADMIN", "ADMIN", "VOLUNTEER"),
+  volunteerApplicationController.listApplications,
+);
+
 // CIVILIAN own / ADMIN any
 router.get<ApplicationParams>(
   "/:id",
@@ -37,6 +44,13 @@ router.patch<ApplicationParams>(
   "/:id",
   requireRoles("CIVILIAN"),
   volunteerApplicationController.updateApplication,
+);
+
+// SUPERADMIN / COORDINATOR / DIRECTOR — agency-level auth resolved in service
+router.patch<ApplicationParams>(
+  "/:id/review",
+  requireRoles("SUPERADMIN", "VOLUNTEER"),
+  volunteerApplicationController.reviewApplication,
 );
 
 export default router;

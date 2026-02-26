@@ -45,3 +45,11 @@ export function requireRoles(...allowedRoles: string[]) {
     next();
   };
 }
+
+export function isSuperAdmin(role: string): boolean {
+  return role === "SUPERADMIN";
+}
+
+export function isAdminOrAbove(role: string): boolean {
+  return role === "ADMIN" || role === "SUPERADMIN";
+}

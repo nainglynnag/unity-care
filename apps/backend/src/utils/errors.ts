@@ -123,6 +123,26 @@ export class CannotWithdrawError extends AppError {
   }
 }
 
+export class ApplicationNotReviewableError extends AppError {
+  constructor(currentStatus: string) {
+    super(
+      "APPLICATION_NOT_REVIEWABLE",
+      `Application cannot be reviewed from its current status: ${currentStatus}.`,
+      400,
+    );
+  }
+}
+
+export class ReviewNotAllowedError extends AppError {
+  constructor() {
+    super(
+      "REVIEW_NOT_ALLOWED",
+      "You do not have permission to review applications.",
+      403,
+    );
+  }
+}
+
 // Volunteer Profile
 export class InvalidSkillIdsError extends AppError {
   constructor(unknownIds: string[]) {

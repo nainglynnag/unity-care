@@ -84,6 +84,24 @@ export async function getApplication(
   }
 }
 
+// PATCH /applications/:id/start-review
+export async function startReview(
+  req: Request<ApplicationParams>,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const result = await volunteerApplicationService.startReview(
+      req.params.id,
+      req.user!.sub,
+      req.user!.role,
+    );
+    return successResponse(res, result);
+  } catch (error) {
+    next(error);
+  }
+}
+
 // PATCH /applications/:id
 export async function updateApplication(
   req: Request<ApplicationParams>,

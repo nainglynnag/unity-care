@@ -10,6 +10,7 @@ import {
   ApplicationNotFoundError,
   ApplicationNotEditableError,
   ApplicationNotReviewableError,
+  ApplicationNotStartableError,
   ReviewNotAllowedError,
   CannotWithdrawError,
   ForbiddenError,
@@ -423,6 +424,64 @@ export async function getApplicationById(
   return application;
 }
 
+// Start review — claim a PENDING application as UNDER_REVIEW
+export async function startReview(
+  applicationId: string,
+  reviewerId: string,
+  reviewerRole: string,
+) {
+  // Step 1: Resolve reviewer authority (same as reviewApplication)
+  let scopedAgencyId: string | null = null;
+
+  if (isSuperAdmin(reviewerRole)) {
+    scopedAgencyId = null;
+  } else if (reviewerRole === "VOLUNTEER") {
+    const membership = await prisma.agencyMember.findFirst({
+      where: { userId: reviewerId, role: { in: ["COORDINATOR", "DIRECTOR"] } },
+    });
+
+    if (!membership) {
+      throw new ReviewNotAllowedError();
+    }
+
+    scopedAgencyId = membership.agencyId;
+  } else {
+    // ADMIN has oversight only, CIVILIAN cannot review
+    throw new ReviewNotAllowedError();
+  }
+
+  // Step 2: Find application
+  const application = await prisma.volunteerApplication.findUnique({
+    where: { id: applicationId },
+  });
+  if (!application) throw new ApplicationNotFoundError();
+
+  // Step 3: Agency scope check
+  if (scopedAgencyId && application.agencyId !== scopedAgencyId) {
+    throw new ApplicationNotFoundError();
+  }
+
+  // Step 4: Status guard — only PENDING can be started
+  if (application.status !== "PENDING" || application.reviewedBy !== null) {
+    throw new ApplicationNotStartableError(application.status);
+  }
+
+  // Step 5: Claim application as UNDER_REVIEW
+  const updated = await prisma.volunteerApplication.update({
+    where: { id: applicationId },
+    data: {
+      status: "UNDER_REVIEW",
+      reviewedBy: reviewerId,
+    },
+    include: {
+      applicant: { select: FULL_PII_APPLICANT_SELECT },
+      agency: { select: { id: true, name: true } },
+    },
+  });
+
+  return updated;
+}
+
 // Review (approve/reject) a volunteer application
 export async function reviewApplication(
   applicationId: string,
@@ -468,9 +527,11 @@ export async function reviewApplication(
     throw new ApplicationNotFoundError();
   }
 
-  // Step 3: Status check
-  const reviewableStatuses = ["PENDING", "UNDER_REVIEW"];
-  if (!reviewableStatuses.includes(application.status)) {
+  // Step 3: Status check — only UNDER_REVIEW can be reviewed
+  if (
+    application.status !== "UNDER_REVIEW" ||
+    application.reviewedBy !== reviewerId
+  ) {
     throw new ApplicationNotReviewableError(application.status);
   }
 

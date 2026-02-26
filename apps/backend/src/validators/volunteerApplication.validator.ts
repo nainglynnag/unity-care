@@ -79,6 +79,8 @@ export const updateApplicationSchema = z
 
 export const withdrawApplicationSchema = z.object({});
 
+export const startReviewSchema = z.object({});
+
 // List Applications
 export const listApplicationsQuerySchema = z.object({
   agencyId: z.uuid().optional(),

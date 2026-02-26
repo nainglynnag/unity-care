@@ -133,6 +133,16 @@ export class ApplicationNotReviewableError extends AppError {
   }
 }
 
+export class ApplicationNotStartableError extends AppError {
+  constructor(currentStatus: string) {
+    super(
+      "APPLICATION_NOT_STARTABLE",
+      `Application cannot be started for review from its current status: ${currentStatus} or another reviewer is already in progress.`,
+      400,
+    );
+  }
+}
+
 export class ReviewNotAllowedError extends AppError {
   constructor() {
     super(

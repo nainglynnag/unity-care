@@ -30,7 +30,7 @@ model User {
   reviewedVolunteerApplications  VolunteerApplication[] @relation("VolunteerReviewer")
 
   reportedIncidents Incident[]             @relation("IncidentReporter")
-  verifications     IncidentVerification[]
+  verifications     IncidentVerification[] @relation("VerificationSubmitter")
   uploadedMedia     IncidentMedia[]
 
   createdMissions  Mission[]           @relation("MissionCreator")
@@ -40,8 +40,11 @@ model User {
   missionReports   MissionReport[]
   missionTracking  MissionTracking[]
 
-  notifications Notification[]
-  auditLogs     AuditLog[]     @relation("UserAuditLogs")
+  notifications          Notification[]
+  auditLogs              AuditLog[]             @relation("UserAuditLogs")
+  assignedVerifications  IncidentVerification[] @relation("VerificationAssignee")
+  assignerVerifications  IncidentVerification[] @relation("VerificationAssigner")
+  confirmedVerifications IncidentVerification[] @relation("VerificationConfirmer")
 }
 
 model Role {
@@ -231,18 +234,30 @@ model Incident {
 }
 
 model IncidentVerification {
-  id        String               @id @default(uuid())
-  decision  VerificationDecision
-  comment   String?
-  createdAt DateTime             @default(now())
+  id          String                @id @default(uuid())
+  decision    VerificationDecision?
+  comment     String?
+  assignedTo  String?
+  assignedBy  String?
+  assignedAt  DateTime?
+  submittedAt DateTime?
+  isConfirmed Boolean?
+  confirmedBy String?
+  confirmedAt DateTime?
+  confirmNote String?
+  createdAt   DateTime              @default(now())
 
   incidentId String
-  verifiedBy String
+  verifiedBy String?
 
-  incident Incident @relation(fields: [incidentId], references: [id])
-  verifier User     @relation(fields: [verifiedBy], references: [id])
+  incident  Incident @relation(fields: [incidentId], references: [id])
+  assignee  User?    @relation("VerificationAssignee", fields: [assignedTo], references: [id])
+  assigner  User?    @relation("VerificationAssigner", fields: [assignedBy], references: [id])
+  verifier  User?    @relation("VerificationSubmitter", fields: [verifiedBy], references: [id])
+  confirmer User?    @relation("VerificationConfirmer", fields: [confirmedBy], references: [id])
 
   @@index([incidentId])
+  @@index([assignedTo])
 }
 
 model IncidentMedia {

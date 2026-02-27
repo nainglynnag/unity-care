@@ -16,7 +16,7 @@ router.post(
 
 router.get(
   "/me",
-  requireRoles("CIVILIAN"),
+  requireRoles("CIVILIAN", "VOLUNTEER"),
   volunteerApplicationController.getMyApplications,
 );
 

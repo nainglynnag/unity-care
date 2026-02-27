@@ -1,6 +1,12 @@
 import { prisma } from "../lib/prisma";
-import { AppError } from "../utils/appError";
 import { IncidentStatus } from "../../generated/prisma/client";
+import {
+  IncidentNotFoundError,
+  CategoryNotFoundError,
+  CategoryInactiveError,
+  InvalidStatusTransitionError,
+  ForbiddenError,
+} from "../utils/errors";
 import type {
   CreateIncidentInput,
   ListIncidentQuery,
@@ -17,19 +23,11 @@ export async function createIncident(
   });
 
   if (!category) {
-    throw new AppError(
-      "CATEGORY_NOT_FOUND",
-      "The selected incident category does not exist.",
-      404,
-    );
+    throw new CategoryNotFoundError();
   }
 
   if (!category.isActive) {
-    throw new AppError(
-      "CATEGORY_INACTIVE",
-      "The selected incident category is no longer active.",
-      400,
-    );
+    throw new CategoryInactiveError();
   }
 
   let emergencyProfile = null;
@@ -222,11 +220,7 @@ export async function getIncidentById(
   });
 
   if (!incident) {
-    throw new AppError(
-      "INCIDENT_NOT_FOUND",
-      "The requested incident could not be found.",
-      404,
-    );
+    throw new IncidentNotFoundError();
   }
 
   return incident;
@@ -328,7 +322,7 @@ export async function listIncidents(query: ListIncidentQuery) {
     ...(categoryId && { categoryId }),
   };
 
-  const [incidents, totalRecords] = await prisma.$transaction([
+  const [incidents, totalRecords] = await Promise.all([
     prisma.incident.findMany({
       where,
       include: {
@@ -414,19 +408,11 @@ export async function closeIncidentByReporter(
   });
 
   if (!incident) {
-    throw new AppError(
-      "INCIDENT_NOT_FOUND",
-      "The requested incident could not be found.",
-      404,
-    );
+    throw new IncidentNotFoundError();
   }
 
   if (incident.reportedBy !== reportedBy) {
-    throw new AppError(
-      "FORBIDDEN",
-      "You can only close incidents you reported.",
-      403,
-    );
+    throw new ForbiddenError();
   }
 
   const REPORTER_CLOSEABLE: IncidentStatus[] = [
@@ -436,11 +422,7 @@ export async function closeIncidentByReporter(
   ];
 
   if (!REPORTER_CLOSEABLE.includes(incident.status)) {
-    throw new AppError(
-      "INVALID_STATUS_TRANSITION",
-      `You cannot close an incident at the current ${incident.status} stage.`,
-      400,
-    );
+    throw new InvalidStatusTransitionError(incident.status, "CLOSED");
   }
 
   const [updated] = await prisma.$transaction([
@@ -468,7 +450,7 @@ export async function closeIncidentByReporter(
   return updated;
 }
 
-// By Admin
+// By Coordinator/Director
 export async function updateIncidentStatus(
   incidentId: string,
   newStatus: IncidentStatus,
@@ -478,11 +460,7 @@ export async function updateIncidentStatus(
   });
 
   if (!incident) {
-    throw new AppError(
-      "INCIDENT_NOT_FOUND",
-      "The requested incident could not be found.",
-      404,
-    );
+    throw new IncidentNotFoundError();
   }
 
   validateStatusTransition(incident.status, newStatus);
@@ -515,10 +493,6 @@ function validateStatusTransition(
   const allowed = ALLOWED_TRANSITIONS[current];
 
   if (!allowed.includes(next)) {
-    throw new AppError(
-      "INVALID_STATUS_TRANSITION",
-      `Cannot transition incident from ${current} to ${next}.`,
-      400,
-    );
+    throw new InvalidStatusTransitionError(current, next);
   }
 }

@@ -40,6 +40,8 @@ model User {
   missionReports   MissionReport[]
   missionTracking  MissionTracking[]
 
+  linkedMissionIncidents MissionIncident[] @relation("MissionIncidentLinker")
+
   notifications          Notification[]
   auditLogs              AuditLog[]             @relation("UserAuditLogs")
   assignedVerifications  IncidentVerification[] @relation("VerificationAssignee")
@@ -227,9 +229,10 @@ model Incident {
   category IncidentCategory @relation(fields: [categoryId], references: [id])
   reporter User             @relation("IncidentReporter", fields: [reportedBy], references: [id])
 
-  verifications IncidentVerification[]
-  media         IncidentMedia[]
-  missions      Mission[]
+  verifications  IncidentVerification[]
+  media          IncidentMedia[]
+  missions       Mission[]              @relation("MissionPrimaryIncident")
+  linkedMissions MissionIncident[]      @relation("LinkedMissionIncident")
 
   @@index([status])
   @@index([createdAt])
@@ -287,23 +290,40 @@ model Mission {
   onSiteAt    DateTime?
   completedAt DateTime?
 
-  incidentId String
-  createdBy  String
-  agencyId   String?
+  primaryIncidentId String
+  createdBy         String
+  agencyId          String?
 
-  incident Incident @relation(fields: [incidentId], references: [id])
-  creator  User     @relation("MissionCreator", fields: [createdBy], references: [id])
-  agency   Agency?  @relation(fields: [agencyId], references: [id])
+  primaryIncident Incident @relation("MissionPrimaryIncident", fields: [primaryIncidentId], references: [id])
+  creator         User     @relation("MissionCreator", fields: [createdBy], references: [id])
+  agency          Agency?  @relation(fields: [agencyId], references: [id])
 
-  assignments MissionAssignment[]
-  logs        MissionLog[]
-  tracking    MissionTracking[]
-  report      MissionReport?
+  linkedIncidents MissionIncident[]
+  assignments     MissionAssignment[]
+  logs            MissionLog[]
+  tracking        MissionTracking[]
+  report          MissionReport?
 
   @@index([status])
+  @@index([primaryIncidentId])
+}
+
+model MissionIncident {
+  missionId  String
+  incidentId String
+  linkedAt   DateTime @default(now())
+  linkedBy   String
+
+  mission  Mission  @relation(fields: [missionId], references: [id])
+  incident Incident @relation("LinkedMissionIncident", fields: [incidentId], references: [id])
+  linker   User     @relation("MissionIncidentLinker", fields: [linkedBy], references: [id])
+
+  @@id([missionId, incidentId])
+  @@index([incidentId])
 }
 
 model MissionAssignment {
+  id           String      @id @default(uuid())
   missionId    String
   assignedTo   String
   assignedBy   String
@@ -315,7 +335,7 @@ model MissionAssignment {
   assignee User    @relation("MissionAssignee", fields: [assignedTo], references: [id])
   assigner User    @relation("MissionAssigner", fields: [assignedBy], references: [id])
 
-  @@id([missionId, assignedTo])
+  @@index([missionId, assignedTo])
 }
 
 model MissionTracking {
@@ -486,6 +506,7 @@ enum NotificationType {
   MISSION_ON_SITE
   MISSION_COMPLETED
   MISSION_FAILED
+  MISSION_CLOSED
   APPLICATION_SUBMITTED
   APPLICATION_REVIEWED
   GENERAL

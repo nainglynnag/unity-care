@@ -184,3 +184,145 @@ export class NotAnApprovedVolunteerError extends AppError {
     );
   }
 }
+
+// Incident
+export class IncidentNotFoundError extends AppError {
+  constructor() {
+    super(
+      "INCIDENT_NOT_FOUND",
+      "The requested incident could not be found.",
+      404,
+    );
+  }
+}
+
+export class CategoryNotFoundError extends AppError {
+  constructor() {
+    super(
+      "CATEGORY_NOT_FOUND",
+      "The selected incident category does not exist.",
+      404,
+    );
+  }
+}
+
+export class CategoryInactiveError extends AppError {
+  constructor() {
+    super(
+      "CATEGORY_INACTIVE",
+      "The selected incident category is no longer active.",
+      400,
+    );
+  }
+}
+
+export class InvalidStatusTransitionError extends AppError {
+  constructor(current: string, next: string) {
+    super(
+      "INVALID_STATUS_TRANSITION",
+      `Cannot update incident status from ${current} to ${next}.`,
+      400,
+    );
+  }
+}
+
+export class AgencyLocationRequiredError extends AppError {
+  constructor() {
+    super(
+      "AGENCY_LOCATION_REQUIRED",
+      "Distance sorting requires a reference location. Provide lat and long.",
+      400,
+    );
+  }
+}
+
+// Incident Verification
+export class IncidentNotAssignableError extends AppError {
+  constructor(currentStatus: string) {
+    super(
+      "INCIDENT_NOT_ASSIGNABLE",
+      `Incident cannot be assigned for verification from status: ${currentStatus}.`,
+      400,
+    );
+  }
+}
+
+export class IncidentNotRetryableError extends AppError {
+  constructor(currentStatus: string) {
+    super(
+      "INCIDENT_NOT_RETRYABLE",
+      `Retry Verification is only allowed when incident is UNREACHABLE. Current status: ${currentStatus}.`,
+      400,
+    );
+  }
+}
+
+export class IncidentNotAwaitingVerificationError extends AppError {
+  constructor(currentStatus: string) {
+    super(
+      "INCIDENT_NOT_AWAITING_VERIFICATION",
+      `Cannot submit verification: incident status is ${currentStatus}, expected AWAITING_VERIFICATION.`,
+      400,
+    );
+  }
+}
+
+export class VerificationNotFoundError extends AppError {
+  constructor() {
+    super(
+      "VERIFICATION_NOT_FOUND",
+      "No active verification assignment found for this incident.",
+      404,
+    );
+  }
+}
+
+export class VerificationAlreadyAssignedError extends AppError {
+  constructor() {
+    super(
+      "VERIFICATION_ALREADY_ASSIGNED",
+      "This incident already has an active verification assignment.",
+      409,
+    );
+  }
+}
+
+export class VerificationAlreadySubmittedError extends AppError {
+  constructor() {
+    super(
+      "VERIFICATION_ALREADY_SUBMITTED",
+      "Verification result has already been submitted for this assignment.",
+      400,
+    );
+  }
+}
+
+export class NotAssignedVerifierError extends AppError {
+  constructor() {
+    super(
+      "NOT_ASSIGNED_VERIFIER",
+      "You are not the volunteer assigned to verify this incident.",
+      403,
+    );
+  }
+}
+
+export class VolunteerNotAvailableError extends AppError {
+  constructor() {
+    super(
+      "VOLUNTEER_NOT_AVAILABLE",
+      "The selected volunteer is not currently available for assignment.",
+      400,
+    );
+  }
+}
+
+export class VolunteerNotInAgencyError extends AppError {
+  constructor() {
+    super(
+      "VOLUNTEER_NOT_IN_AGENCY",
+      "The selected volunteer does not belong to your agency.",
+      400,
+    );
+  }
+}

@@ -159,7 +159,7 @@ export async function closeIncidentByReporter(
   }
 }
 
-// ADMIN only
+// COORDINATOR / DIRECTOR / SUPERADMIN only
 export async function updateIncidentStatus(
   req: Request<IncidentParams>,
   res: Response,
@@ -170,6 +170,8 @@ export async function updateIncidentStatus(
     const incident = await incidentService.updateIncidentStatus(
       req.params.id,
       status as IncidentStatus,
+      req.user!.sub,
+      req.user!.role,
     );
     return successResponse(res, incident);
   } catch (error) {

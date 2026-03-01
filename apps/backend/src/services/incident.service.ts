@@ -8,6 +8,7 @@ import {
   AgencyLocationRequiredError,
   ForbiddenError,
 } from "../utils/errors";
+import { isSuperAdmin } from "../middlewares/auth.middleware";
 import type {
   CreateIncidentInput,
   ListMyIncidentQuery,
@@ -700,11 +701,31 @@ export async function closeIncidentByReporter(
   return updated;
 }
 
-// By Coordinator/Director
+// By Coordinator/Director/SUPERADMIN only.
+// VOLUNTEER members without COORDINATOR or DIRECTOR agency role are rejected.
 export async function updateIncidentStatus(
   incidentId: string,
   newStatus: IncidentStatus,
+  requesterId: string,
+  requesterRole: string,
 ) {
+  // Authority check
+  if (isSuperAdmin(requesterRole)) {
+    // SUPERADMIN can update any incident status
+  } else if (requesterRole === "VOLUNTEER") {
+    const membership = await prisma.agencyMember.findFirst({
+      where: {
+        userId: requesterId,
+        role: { in: ["COORDINATOR", "DIRECTOR"] },
+      },
+      select: { agencyId: true },
+    });
+    if (!membership) throw new ForbiddenError();
+  } else {
+    // ADMIN, CIVILIAN, or any other role → no access
+    throw new ForbiddenError();
+  }
+
   const incident = await prisma.incident.findFirst({
     where: { id: incidentId, deletedAt: null },
   });

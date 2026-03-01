@@ -261,7 +261,7 @@ export class IncidentNotAwaitingVerificationError extends AppError {
   constructor(currentStatus: string) {
     super(
       "INCIDENT_NOT_AWAITING_VERIFICATION",
-      `Cannot submit verification: incident status is ${currentStatus}, expected AWAITING_VERIFICATION.`,
+      `Cannot submit verification: incident status is ${currentStatus}.`,
       400,
     );
   }
@@ -324,5 +324,139 @@ export class VolunteerNotInAgencyError extends AppError {
       "The selected volunteer does not belong to your agency.",
       400,
     );
+  }
+}
+
+// ── Mission ────────────────────────────────────────────────────────────────
+
+export class MissionNotFoundError extends AppError {
+  constructor() {
+    super(
+      "MISSION_NOT_FOUND",
+      "The requested mission could not be found.",
+      404,
+    );
+  }
+}
+
+export class IncidentNotVerifiedError extends AppError {
+  constructor() {
+    super(
+      "INCIDENT_NOT_VERIFIED",
+      "A mission can only be created from a VERIFIED incident.",
+      400,
+    );
+  }
+}
+
+export class LinkedIncidentInvalidError extends AppError {
+  constructor(ids: string[]) {
+    super(
+      "LINKED_INCIDENT_INVALID",
+      "One or more linked incidents are not valid for linking.",
+      400,
+      ids.map((id) => ({
+        field: "linkedIncidentIds",
+        value: id,
+        message:
+          "Incident not found, already closed/false, or is the primary incident.",
+      })),
+    );
+  }
+}
+
+export class NoLeaderAssignedError extends AppError {
+  constructor() {
+    super(
+      "NO_LEADER_ASSIGNED",
+      "Every mission team must have exactly one LEADER.",
+      400,
+    );
+  }
+}
+
+export class MultipleLeadersError extends AppError {
+  constructor() {
+    super(
+      "MULTIPLE_LEADERS",
+      "A mission can only have one LEADER. Assign additional volunteers as MEMBER.",
+      400,
+    );
+  }
+}
+
+export class DuplicateVolunteerAssignmentError extends AppError {
+  constructor(volunteerId: string) {
+    super(
+      "DUPLICATE_VOLUNTEER_ASSIGNMENT",
+      `Volunteer ${volunteerId} appears more than once in the assignment list.`,
+      400,
+    );
+  }
+}
+
+export class VolunteersNotAvailableError extends AppError {
+  constructor(ids: string[]) {
+    super(
+      "VOLUNTEERS_NOT_AVAILABLE",
+      "One or more selected volunteers are not currently available.",
+      400,
+      ids.map((id) => ({
+        field: "volunteers",
+        value: id,
+        message: "Not available.",
+      })),
+    );
+  }
+}
+
+export class VolunteersNotInAgencyError extends AppError {
+  constructor(ids: string[]) {
+    super(
+      "VOLUNTEERS_NOT_IN_AGENCY",
+      "One or more selected volunteers do not belong to your agency.",
+      400,
+      ids.map((id) => ({
+        field: "volunteers",
+        value: id,
+        message: "Not in agency.",
+      })),
+    );
+  }
+}
+
+export class InvalidMissionTransitionError extends AppError {
+  constructor(from: string, to: string) {
+    super(
+      "INVALID_MISSION_TRANSITION",
+      `Cannot transition mission from ${from} to ${to}.`,
+      400,
+    );
+  }
+}
+
+export class MissionNotActionableError extends AppError {
+  constructor(action: string, currentStatus: string) {
+    super(
+      "MISSION_NOT_ACTIONABLE",
+      `Cannot perform "${action}" on a mission with status: ${currentStatus}.`,
+      400,
+    );
+  }
+}
+
+export class NotMissionLeaderError extends AppError {
+  constructor() {
+    super(
+      "NOT_MISSION_LEADER",
+      "Only the mission LEADER can perform this action.",
+      403,
+    );
+  }
+}
+
+export class IncidentNotResolvableError extends AppError {
+  constructor(reason: string) {
+    super("INCIDENT_NOT_RESOLVABLE", reason, 400);
   }
 }

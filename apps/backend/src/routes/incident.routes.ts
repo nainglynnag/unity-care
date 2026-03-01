@@ -1,6 +1,7 @@
 import { Router } from "express";
 import * as incidentController from "../controllers/incident.controller";
 import * as verificationController from "../controllers/incidentVerification.controller";
+import { resolveIncident } from "../controllers/mission.controller";
 import { authenticate, requireRoles } from "../middlewares/auth.middleware";
 import type { IncidentParams } from "../controllers/incident.controller";
 
@@ -80,5 +81,9 @@ router.patch<IncidentParams>(
   requireRoles("VOLUNTEER", "SUPERADMIN"),
   incidentController.updateIncidentStatus,
 );
+
+// Resolve a verified incident (COORDINATOR/DIRECTOR/SUPERADMIN)
+// Handler lives in mission.controller — resolution depends on mission state.
+router.patch<IncidentParams>("/:id/resolve", resolveIncident);
 
 export default router;

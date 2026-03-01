@@ -7,6 +7,7 @@ import incidentRoutes from "./routes/incident.routes";
 import emergencyProfileRoutes from "./routes/emergencyProfile.route";
 import volunteerApplicationRoutes from "./routes/volunteerApplication.route";
 import volunteerProfileRoutes from "./routes/volunteerProfile.route";
+import missionRoutes from "./routes/mission.routes";
 import { errorHandler } from "./middlewares/error.middleware";
 
 export const app = express();
@@ -24,5 +25,6 @@ app.use("/api/v1/incidents", incidentRoutes);
 app.use("/api/v1/emergency-profiles", emergencyProfileRoutes);
 app.use("/api/v1/applications", volunteerApplicationRoutes);
 app.use("/api/v1/volunteer-profiles", volunteerProfileRoutes);
+app.use("/api/v1/missions", missionRoutes);
 
 app.use(errorHandler);

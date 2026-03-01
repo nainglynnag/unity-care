@@ -14,6 +14,13 @@ router.post("/", requireRoles("CIVILIAN"), incidentController.createIncident);
 // Get a reported incident by a civilian
 router.get("/me", requireRoles("CIVILIAN"), incidentController.listMyIncidents);
 
+// Get assigned incidents for a volunteer
+router.get(
+  "/assigned",
+  requireRoles("VOLUNTEER"),
+  incidentController.listAssignedIncidents,
+);
+
 // Get an incident by id
 router.get<IncidentParams>("/:id", incidentController.getIncident);
 

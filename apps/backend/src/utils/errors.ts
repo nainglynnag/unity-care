@@ -226,6 +226,16 @@ export class InvalidStatusTransitionError extends AppError {
   }
 }
 
+export class AgencyLocationRequiredError extends AppError {
+  constructor() {
+    super(
+      "AGENCY_LOCATION_REQUIRED",
+      "Distance sorting requires a reference location. Provide lat and long.",
+      400,
+    );
+  }
+}
+
 // Incident Verification
 export class IncidentNotAssignableError extends AppError {
   constructor(currentStatus: string) {

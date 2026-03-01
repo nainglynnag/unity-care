@@ -1,16 +1,109 @@
 import { prisma } from "../lib/prisma";
-import { IncidentStatus } from "../../generated/prisma/client";
+import { IncidentStatus, Prisma } from "../../generated/prisma/client";
 import {
   IncidentNotFoundError,
   CategoryNotFoundError,
   CategoryInactiveError,
   InvalidStatusTransitionError,
+  AgencyLocationRequiredError,
   ForbiddenError,
 } from "../utils/errors";
 import type {
   CreateIncidentInput,
+  ListMyIncidentQuery,
   ListIncidentQuery,
+  ListAssignedIncidentsQuery,
 } from "../validators/incident.validator";
+
+// Haversine formula as raw SQL fragment.
+// Calculates great-circle distance in km between a fixed point (lat/lng params)
+// and each incident's stored (latitude, longitude).
+// Earth radius = 6371 km.
+// LEAST(1.0, ...) guards against floating-point errors where acos receives
+// a value slightly above 1.0 due to rounding — without it, acos returns NaN on edge cases where the two points are identical or very close.
+const HAVERSINE_SQL = (lat: number, lng: number) => `
+  (6371 * acos(
+    LEAST(1.0,
+      cos(radians(${lat}))
+      * cos(radians(i."latitude"))
+      * cos(radians(i."longitude") - radians(${lng}))
+      + sin(radians(${lat}))
+      * sin(radians(i."latitude"))
+    )
+  ))
+`;
+
+// Shared include for listIncidents — used by both the Prisma and raw-SQL
+// branches so the response shape is identical regardless of geo filtering.
+const LIST_INCIDENT_INCLUDE = {
+  category: true,
+  reporter: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      phone: true,
+      emergencyProfile: {
+        include: {
+          contacts: { orderBy: { isPrimary: "desc" as const } },
+        },
+      },
+    },
+  },
+  media: true,
+  verifications: {
+    include: {
+      verifier: { select: { id: true, name: true, email: true } },
+    },
+    orderBy: { createdAt: "desc" as const },
+  },
+  missions: {
+    include: {
+      assignments: {
+        include: {
+          assignee: {
+            select: { id: true, name: true, email: true, phone: true },
+          },
+        },
+      },
+      tracking: {
+        orderBy: { recordedAt: "desc" as const },
+        select: {
+          latitude: true,
+          longitude: true,
+          recordedAt: true,
+          volunteer: { select: { id: true, name: true } },
+        },
+      },
+      logs: {
+        include: { actor: { select: { id: true, name: true } } },
+        orderBy: { createdAt: "desc" as const },
+      },
+      report: true,
+    },
+  },
+  _count: {
+    select: { verifications: true, media: true, missions: true },
+  },
+} satisfies Prisma.IncidentInclude;
+
+// Pagination result builder — shared across list functions
+function buildPaginatedResult<T>(
+  data: T[],
+  totalRecords: number,
+  page: number,
+  perPage: number,
+) {
+  return {
+    incidents: data,
+    pagination: {
+      totalRecords,
+      totalPages: Math.ceil(totalRecords / perPage),
+      currentPage: page,
+      perPage,
+    },
+  };
+}
 
 // Create Incident
 export async function createIncident(
@@ -229,7 +322,7 @@ export async function getIncidentById(
 // List My Incidents (Civilian)
 export async function listMyIncidents(
   reportedBy: string,
-  query: ListIncidentQuery,
+  query: ListMyIncidentQuery,
 ) {
   const { status, page, perPage } = query;
   const skip = (page - 1) * perPage;
@@ -312,79 +405,236 @@ export async function listMyIncidents(
 }
 
 // List Incidents (Admin / Volunteer)
-export async function listIncidents(query: ListIncidentQuery) {
-  const { status, categoryId, page, perPage } = query;
+// Supports optional Haversine distance filtering.
+// When sortBy=distance or radiusKm is provided, geo coordinates are needed.
+// If lat/lng are not in query, the requester's agency location is used.
+// ADMIN/SUPERADMIN without an agency must provide lat/lng explicitly.
+export async function listIncidents(
+  requesterId: string,
+  requesterRole: string,
+  query: ListIncidentQuery,
+) {
+  const { status, categoryId, page, perPage, radiusKm, sortBy } = query;
+  let { lat, lng } = query;
+  const skip = (page - 1) * perPage;
+  const needsGeo = sortBy === "distance" || radiusKm !== undefined;
+
+  // Resolve lat/lng from agency when not explicitly provided
+  if (needsGeo && lat === undefined) {
+    const membership = await prisma.agencyMember.findFirst({
+      where: { userId: requesterId },
+      select: { agency: { select: { latitude: true, longitude: true } } },
+    });
+
+    if (!membership) throw new AgencyLocationRequiredError();
+
+    lat = membership.agency.latitude;
+    lng = membership.agency.longitude;
+  }
+
+  // Branch A: no geo — existing Prisma query, unchanged behaviour
+  if (!needsGeo) {
+    const where = {
+      deletedAt: null,
+      ...(status && { status }),
+      ...(categoryId && { categoryId }),
+    };
+
+    const [incidents, totalRecords] = await Promise.all([
+      prisma.incident.findMany({
+        where,
+        include: LIST_INCIDENT_INCLUDE,
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: perPage,
+      }),
+      prisma.incident.count({ where }),
+    ]);
+
+    return buildPaginatedResult(incidents, totalRecords, page, perPage);
+  }
+
+  // Branch B: geo — raw SQL with Haversine
+  // lat/lng are guaranteed at this point (either from query or agency lookup)
+  const distanceExpr = HAVERSINE_SQL(lat!, lng!);
+
+  // Build dynamic WHERE fragments with numbered params
+  // Param slots depend on whether radiusKm is provided
+  const params: (string | number)[] = [];
+  let paramIdx = 1;
+
+  // radiusKm is optional — when absent, all incidents are returned (sorted by distance)
+  let radiusFilter = "";
+  if (radiusKm !== undefined) {
+    radiusFilter = `AND ${distanceExpr} <= $${paramIdx}`;
+    params.push(radiusKm);
+    paramIdx++;
+  }
+
+  // perPage and skip always present
+  const perPageIdx = paramIdx;
+  params.push(perPage);
+  paramIdx++;
+  const skipIdx = paramIdx;
+  params.push(skip);
+  paramIdx++;
+
+  let statusFilter = "";
+  let categoryFilter = "";
+
+  if (status) {
+    statusFilter = `AND i."status" = $${paramIdx}::"IncidentStatus"`;
+    params.push(status);
+    paramIdx++;
+  }
+  if (categoryId) {
+    categoryFilter = `AND i."categoryId" = $${paramIdx}`;
+    params.push(categoryId);
+  }
+
+  const orderClause =
+    sortBy === "distance"
+      ? `ORDER BY distance_km ASC`
+      : `ORDER BY i."createdAt" DESC`;
+
+  // Fetch matching IDs + distance
+  const rawRows = await prisma.$queryRawUnsafe<
+    Array<{ id: string; distance_km: number }>
+  >(
+    `
+    SELECT i."id",
+           ${distanceExpr} AS distance_km
+    FROM   "Incident" i
+    WHERE  i."deletedAt" IS NULL
+      ${statusFilter}
+      ${categoryFilter}
+      ${radiusFilter}
+    ${orderClause}
+    LIMIT  $${perPageIdx}
+    OFFSET $${skipIdx}
+    `,
+    ...params,
+  );
+
+  // Count query — same filters, no LIMIT/OFFSET
+  // Remove perPage and skip from params for the count query
+  const countParams = params.filter(
+    (_, i) => i !== perPageIdx - 1 && i !== skipIdx - 1,
+  );
+  // Re-number the SQL placeholders for count query
+  let countParamIdx = 1;
+  let countRadiusFilter = "";
+  if (radiusKm !== undefined) {
+    countRadiusFilter = `AND ${distanceExpr} <= $${countParamIdx}`;
+    countParamIdx++;
+  }
+  let countStatusFilter = "";
+  let countCategoryFilter = "";
+  if (status) {
+    countStatusFilter = `AND i."status" = $${countParamIdx}::"IncidentStatus"`;
+    countParamIdx++;
+  }
+  if (categoryId) {
+    countCategoryFilter = `AND i."categoryId" = $${countParamIdx}`;
+  }
+
+  const countRows = await prisma.$queryRawUnsafe<Array<{ count: bigint }>>(
+    `
+    SELECT COUNT(*) AS count
+    FROM   "Incident" i
+    WHERE  i."deletedAt" IS NULL
+      ${countStatusFilter}
+      ${countCategoryFilter}
+      ${countRadiusFilter}
+    `,
+    ...countParams,
+  );
+  const totalRecords = Number(countRows[0]?.count ?? 0);
+
+  if (rawRows.length === 0) {
+    return buildPaginatedResult([], totalRecords, page, perPage);
+  }
+
+  // Re-fetch with Prisma for typed relations (same include as non-geo branch)
+  const ids = rawRows.map((r) => r.id);
+  const distanceMap = new Map(rawRows.map((r) => [r.id, r.distance_km]));
+
+  const incidents = await prisma.incident.findMany({
+    where: { id: { in: ids } },
+    include: LIST_INCIDENT_INCLUDE,
+  });
+
+  // Restore raw query order and attach distanceKm
+  const orderedIncidents = ids
+    .map((id) => {
+      const incident = incidents.find((i) => i.id === id);
+      if (!incident) return null;
+      return {
+        ...incident,
+        distanceKm: parseFloat(distanceMap.get(id)!.toFixed(2)),
+      };
+    })
+    .filter(Boolean);
+
+  return buildPaginatedResult(orderedIncidents, totalRecords, page, perPage);
+}
+
+// List Assigned Incidents (Volunteer)
+// Returns incidents where the requesting volunteer has an IncidentVerification
+// assignment (active, submitted, or confirmed — full history).
+// Includes the specific verification record so the volunteer sees their
+// assignment status, decision, and whether confirmation is pending.
+export async function listAssignedIncidents(
+  volunteerId: string,
+  query: ListAssignedIncidentsQuery,
+) {
+  const { status, page, perPage } = query;
   const skip = (page - 1) * perPage;
 
-  const where = {
-    deletedAt: null,
-    ...(status && { status }),
-    ...(categoryId && { categoryId }),
+  // Filter by assignedTo + always exclude soft-deleted incidents
+  const verificationWhere = {
+    assignedTo: volunteerId,
+    incident: {
+      deletedAt: null,
+      ...(status && { status }),
+    },
   };
 
-  const [incidents, totalRecords] = await Promise.all([
-    prisma.incident.findMany({
-      where,
+  // Promise.all not $transaction — independent reads
+  const [verifications, totalRecords] = await Promise.all([
+    prisma.incidentVerification.findMany({
+      where: verificationWhere,
       include: {
-        category: true,
-        reporter: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            phone: true,
-            emergencyProfile: {
-              include: {
-                contacts: { orderBy: { isPrimary: "desc" } },
-              },
-            },
-          },
-        },
-        media: true,
-        verifications: {
+        incident: {
           include: {
-            verifier: { select: { id: true, name: true, email: true } },
-          },
-          orderBy: { createdAt: "desc" },
-        },
-        missions: {
-          include: {
-            assignments: {
-              include: {
-                assignee: {
-                  select: { id: true, name: true, email: true, phone: true },
-                },
-              },
-            },
-            tracking: {
-              orderBy: { recordedAt: "desc" },
-              select: {
-                latitude: true,
-                longitude: true,
-                recordedAt: true,
-                volunteer: { select: { id: true, name: true } },
-              },
-            },
-            logs: {
-              include: { actor: { select: { id: true, name: true } } },
-              orderBy: { createdAt: "desc" },
-            },
-            report: true,
+            category: true,
+            reporter: { select: { id: true, name: true } },
+            media: { select: { id: true, mediaType: true, url: true } },
+            _count: { select: { missions: true } },
           },
         },
-        _count: {
-          select: { verifications: true, media: true, missions: true },
-        },
+        assigner: { select: { id: true, name: true } },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: { assignedAt: "desc" },
       skip,
       take: perPage,
     }),
-    prisma.incident.count({ where }),
+    prisma.incidentVerification.count({ where: verificationWhere }),
   ]);
 
   return {
-    incidents,
+    assignments: verifications.map((v) => ({
+      verificationId: v.id,
+      assignedAt: v.assignedAt,
+      assignedBy: v.assigner,
+      submittedAt: v.submittedAt,
+      decision: v.decision,
+      comment: v.comment,
+      isConfirmed: v.isConfirmed,
+      confirmedAt: v.confirmedAt,
+      confirmNote: v.confirmNote,
+      incident: v.incident,
+    })),
     pagination: {
       totalRecords,
       totalPages: Math.ceil(totalRecords / perPage),

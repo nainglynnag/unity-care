@@ -102,6 +102,8 @@ model EmergencyContact {
 model Agency {
   id        String   @id @default(uuid())
   name      String
+  latitude  Float
+  longitude Float
   region    String?
   createdAt DateTime @default(now())
 

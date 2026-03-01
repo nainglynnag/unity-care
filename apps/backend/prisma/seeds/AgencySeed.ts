@@ -21,6 +21,8 @@ export async function agencySeed() {
     const agency = await prisma.agency.create({
       data: {
         name: faker.company.name() + " Response Unit",
+        latitude: faker.location.latitude(),
+        longitude: faker.location.longitude(),
         region: faker.location.city(),
       },
     });

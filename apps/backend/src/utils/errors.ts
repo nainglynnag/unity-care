@@ -460,3 +460,64 @@ export class IncidentNotResolvableError extends AppError {
     super("INCIDENT_NOT_RESOLVABLE", reason, 400);
   }
 }
+
+// Account Management
+export class AccountAlreadyDeletedError extends AppError {
+  constructor() {
+    super(
+      "ACCOUNT_ALREADY_DELETED",
+      "This account has already been deleted.",
+      400,
+    );
+  }
+}
+
+export class CannotTargetSelfError extends AppError {
+  constructor(action: string) {
+    super(
+      "CANNOT_TARGET_SELF",
+      `You cannot perform "${action}" on your own account via this endpoint.`,
+      400,
+    );
+  }
+}
+
+export class CannotTargetSuperAdminError extends AppError {
+  constructor() {
+    super(
+      "CANNOT_TARGET_SUPERADMIN",
+      "SUPERADMIN accounts cannot be targeted by privileged management operations.",
+      403,
+    );
+  }
+}
+
+export class IncorrectPasswordError extends AppError {
+  constructor() {
+    super(
+      "INCORRECT_PASSWORD",
+      "The current password you provided is incorrect.",
+      400,
+    );
+  }
+}
+
+export class SamePasswordError extends AppError {
+  constructor() {
+    super(
+      "SAME_PASSWORD",
+      "New password must be different from your current password.",
+      400,
+    );
+  }
+}
+
+export class CannotDeleteVolunteerOnMissionError extends AppError {
+  constructor() {
+    super(
+      "CANNOT_DELETE_VOLUNTEER_ON_MISSION",
+      "Your account cannot be deleted while you are assigned to an active mission.",
+      400,
+    );
+  }
+}

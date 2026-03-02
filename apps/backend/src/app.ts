@@ -8,7 +8,10 @@ import emergencyProfileRoutes from "./routes/emergencyProfile.route";
 import volunteerApplicationRoutes from "./routes/volunteerApplication.route";
 import volunteerProfileRoutes from "./routes/volunteerProfile.route";
 import missionRoutes from "./routes/mission.routes";
+import accountRoutes from "./routes/account.routes";
+import userRoutes from "./routes/users.routes";
 import { errorHandler } from "./middlewares/error.middleware";
+import { scheduleTokenCleanup } from "./jobs/tokenCleanup";
 
 export const app = express();
 
@@ -26,5 +29,10 @@ app.use("/api/v1/emergency-profiles", emergencyProfileRoutes);
 app.use("/api/v1/applications", volunteerApplicationRoutes);
 app.use("/api/v1/volunteer-profiles", volunteerProfileRoutes);
 app.use("/api/v1/missions", missionRoutes);
+app.use("/api/v1/account", accountRoutes);
+app.use("/api/v1/users", userRoutes);
 
 app.use(errorHandler);
+
+// Start background jobs
+scheduleTokenCleanup();

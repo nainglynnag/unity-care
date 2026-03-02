@@ -12,7 +12,7 @@ export interface JwtPayload {
 }
 
 export function generateAccessToken(payload: Omit<JwtPayload, "iat" | "exp">) {
-  return jwt.sign(payload, ACCESS_SECRET, { expiresIn: "1h" });
+  return jwt.sign(payload, ACCESS_SECRET, { expiresIn: "15m" });
 }
 
 export function generateRefreshToken(payload: Omit<JwtPayload, "iat" | "exp">) {

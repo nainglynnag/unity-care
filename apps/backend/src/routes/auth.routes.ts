@@ -2,14 +2,33 @@ import { Router } from "express";
 import * as authController from "../controllers/auth.controller";
 import * as accountController from "../controllers/account.controller";
 import { authenticate } from "../middlewares/auth.middleware";
+import {
+  registerLimiter,
+  loginLimiter,
+  refreshLimiter,
+  signOutLimiter,
+} from "../middlewares/rateLimit";
 
 const router = Router();
 
-router.post("/register", authController.register);
-router.post("/login", authController.login);
-router.post("/refresh", authController.refresh);
+// Public — limiters run before handler (no auth required)
+router.post("/register", registerLimiter, authController.register);
+router.post("/login", loginLimiter, authController.login);
+router.post("/refresh", refreshLimiter, authController.refresh);
+
+// Protected — authenticate first so req.user is populated for user-keyed limiters
 router.get("/me", authenticate, authController.me);
-router.post("/signout", authenticate, accountController.signOut);
-router.post("/signout-all", authenticate, accountController.signOutAll);
+router.post(
+  "/signout",
+  authenticate,
+  signOutLimiter,
+  accountController.signOut,
+);
+router.post(
+  "/signout-all",
+  authenticate,
+  signOutLimiter,
+  accountController.signOutAll,
+);
 
 export default router;

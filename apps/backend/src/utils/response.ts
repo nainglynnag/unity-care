@@ -1,18 +1,39 @@
 import { type Response } from "express";
 import { randomUUID } from "node:crypto";
 
-function baseMeta(success: boolean) {
+function extractRateLimit(res: Response) {
+  const header = res.getHeader("RateLimit");
+  if (!header) return null;
+
+  const parts = String(header).split(",");
+  const map: Record<string, number> = {};
+  for (const part of parts) {
+    const [key, value] = part.split("=").map((s) => s.trim());
+    if (key && value !== undefined) map[key] = Number(value);
+  }
+
+  const retryAfter = res.getHeader("Retry-After");
+
+  return {
+    limit: map.limit ?? 0,
+    remaining: map.remaining ?? 0,
+    reset: map.reset ?? 0,
+    ...(retryAfter !== undefined && { retryAfter: Number(retryAfter) }),
+  };
+}
+
+function baseMeta(res: Response, success: boolean) {
   return {
     success,
     timestamp: new Date().toISOString(),
     requestId: randomUUID(),
-    rateLimit: null,
+    rateLimit: extractRateLimit(res),
   };
 }
 
 export function successResponse(res: Response, data: any, statusCode = 200) {
   return res.status(statusCode).json({
-    meta: baseMeta(true),
+    meta: baseMeta(res, true),
     data,
   });
 }
@@ -31,7 +52,7 @@ export function paginatedResponse(
 ) {
   return res.status(statusCode).json({
     meta: {
-      ...baseMeta(true),
+      ...baseMeta(res, true),
       pagination,
     },
     data,
@@ -47,7 +68,7 @@ export function errorResponse(
   statusCode = 400,
 ) {
   return res.status(statusCode).json({
-    meta: baseMeta(false),
+    meta: baseMeta(res, false),
     data: null,
     error: {
       code,

@@ -11,6 +11,7 @@ import missionRoutes from "./routes/mission.routes";
 import accountRoutes from "./routes/account.routes";
 import userRoutes from "./routes/users.routes";
 import { errorHandler } from "./middlewares/error.middleware";
+import { globalLimiter } from "./middlewares/rateLimit";
 import { scheduleTokenCleanup } from "./jobs/tokenCleanup";
 
 export const app = express();
@@ -18,6 +19,10 @@ export const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Global rate limit — 200 req / 15 min / IP.
+// Applied before routes as a broad safety net for any route without a specific limiter.
+app.use(globalLimiter);
 
 app.get("/api/v1/hello", (req, res) => {
   res.json({ message: "Hello from the backend!" });

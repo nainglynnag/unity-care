@@ -2,15 +2,17 @@ import { Router } from "express";
 import * as volunteerApplicationController from "../controllers/volunteerApplication.controller";
 import type { ApplicationParams } from "../controllers/volunteerApplication.controller";
 import { authenticate, requireRoles } from "../middlewares/auth.middleware";
+import { submitApplicationLimiter } from "../middlewares/rateLimit";
 
 const router = Router();
 
 router.use(authenticate);
 
-// CIVILIAN
+// CIVILIAN — 5 per user per hour
 router.post(
   "/",
   requireRoles("CIVILIAN"),
+  submitApplicationLimiter,
   volunteerApplicationController.submitApplication,
 );
 

@@ -1,14 +1,14 @@
-import { Routes, Route } from 'react-router-dom';
-import SOSpage from '../pages/SOSpage';
-import Login from '../pages/Login';
-import SignUp from '../pages/SignUp';
-import EmergencyProfileSetup from '../pages/EmergencyProfileSetup';
-import ChooseHelp from '../pages/ChooseHelp';
-import Chat from '../pages/Chat';
-import Map from '../pages/Map';
-import CompleteMission from '../pages/CompleteMission';
-import VoiceCall from '../pages/VoiceCall';
-import VideoCall from '../pages/VideoCall';
+import { Routes, Route } from "react-router-dom";
+import SOSpage from "../pages/SOSpage";
+import Login from "../pages/login";
+import SignUp from "../pages/signup";
+import EmergencyProfileSetup from "../pages/EmergencyProfileSetup";
+import ChooseHelp from "../pages/ChooseHelp";
+import Chat from "../pages/Chat";
+import Map from "../pages/Map";
+import CompleteMission from "../pages/CompleteMission";
+import VoiceCall from "../pages/VoiceCall";
+import VideoCall from "../pages/VideoCall";
 
 export const UserRoutes = () => {
   return (

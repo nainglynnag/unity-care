@@ -4,7 +4,9 @@ import {
   createIncidentSchema,
   closeIncidentByReporterSchema,
   updateIncidentStatusSchema,
+  listMyIncidentQuerySchema,
   listIncidentQuerySchema,
+  listAssignedIncidentsQuerySchema,
 } from "../validators/incident.validator";
 import { successResponse, paginatedResponse } from "../utils/response";
 import { IncidentStatus } from "../../generated/prisma/client";
@@ -36,7 +38,7 @@ export async function createIncident(
 }
 
 // Get all incidents
-// ADMIN / VOLUNTEER
+// ADMIN / SUPERADMIN / VOLUNTEER
 export async function listIncidents(
   req: Request,
   res: Response,
@@ -44,18 +46,35 @@ export async function listIncidents(
 ) {
   try {
     const query = listIncidentQuerySchema.parse(req.query);
-    const { incidents, pagination } =
-      await incidentService.listIncidents(query);
+    const { incidents, pagination } = await incidentService.listIncidents(
+      req.user!.sub,
+      req.user!.role,
+      query,
+    );
 
+    // Build query suffix that preserves all active filters in pagination links
     const base = `/incidents`;
+    const filterParts: string[] = [];
+    if (query.status) filterParts.push(`status=${query.status}`);
+    if (query.categoryId) filterParts.push(`categoryId=${query.categoryId}`);
+    if (query.lat !== undefined) {
+      filterParts.push(`lat=${query.lat}`);
+      filterParts.push(`lng=${query.lng}`);
+      filterParts.push(`radiusKm=${query.radiusKm}`);
+    }
+    if (query.sortBy !== "createdAt")
+      filterParts.push(`sortBy=${query.sortBy}`);
+    const filterSuffix =
+      filterParts.length > 0 ? `&${filterParts.join("&")}` : "";
+
     const links: Record<string, string> = {
-      self: `${base}?page=${pagination.currentPage}&perPage=${pagination.perPage}`,
+      self: `${base}?page=${pagination.currentPage}&perPage=${pagination.perPage}${filterSuffix}`,
     };
     if (pagination.currentPage < pagination.totalPages) {
-      links.next = `${base}?page=${pagination.currentPage + 1}&perPage=${pagination.perPage}`;
+      links.next = `${base}?page=${pagination.currentPage + 1}&perPage=${pagination.perPage}${filterSuffix}`;
     }
     if (pagination.currentPage > 1) {
-      links.prev = `${base}?page=${pagination.currentPage - 1}&perPage=${pagination.perPage}`;
+      links.prev = `${base}?page=${pagination.currentPage - 1}&perPage=${pagination.perPage}${filterSuffix}`;
     }
 
     return paginatedResponse(res, incidents, pagination, links);
@@ -72,7 +91,7 @@ export async function listMyIncidents(
   next: NextFunction,
 ) {
   try {
-    const query = listIncidentQuerySchema.parse(req.query);
+    const query = listMyIncidentQuerySchema.parse(req.query);
     const reportedBy = req.user!.sub;
 
     const { incidents, pagination } = await incidentService.listMyIncidents(
@@ -81,14 +100,15 @@ export async function listMyIncidents(
     );
 
     const base = `/incidents/me`;
+    const filterSuffix = query.status ? `&status=${query.status}` : "";
     const links: Record<string, string> = {
-      self: `${base}?page=${pagination.currentPage}&perPage=${pagination.perPage}`,
+      self: `${base}?page=${pagination.currentPage}&perPage=${pagination.perPage}${filterSuffix}`,
     };
     if (pagination.currentPage < pagination.totalPages) {
-      links.next = `${base}?page=${pagination.currentPage + 1}&perPage=${pagination.perPage}`;
+      links.next = `${base}?page=${pagination.currentPage + 1}&perPage=${pagination.perPage}${filterSuffix}`;
     }
     if (pagination.currentPage > 1) {
-      links.prev = `${base}?page=${pagination.currentPage - 1}&perPage=${pagination.perPage}`;
+      links.prev = `${base}?page=${pagination.currentPage - 1}&perPage=${pagination.perPage}${filterSuffix}`;
     }
 
     return paginatedResponse(res, incidents, pagination, links);
@@ -153,7 +173,7 @@ export async function closeIncidentByReporter(
   }
 }
 
-// ADMIN only
+// COORDINATOR / DIRECTOR / SUPERADMIN only
 export async function updateIncidentStatus(
   req: Request<IncidentParams>,
   res: Response,
@@ -164,8 +184,43 @@ export async function updateIncidentStatus(
     const incident = await incidentService.updateIncidentStatus(
       req.params.id,
       status as IncidentStatus,
+      req.user!.sub,
+      req.user!.role,
     );
     return successResponse(res, incident);
+  } catch (error) {
+    next(error);
+  }
+}
+
+// GET /incidents/assigned
+// VOLUNTEER only — returns incidents where the volunteer has a verification
+// assignment (active or historical). Includes their assignment status.
+export async function listAssignedIncidents(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const query = listAssignedIncidentsQuerySchema.parse(req.query);
+    const result = await incidentService.listAssignedIncidents(
+      req.user!.sub,
+      query,
+    );
+
+    const base = `/incidents/assigned`;
+    const filterSuffix = query.status ? `&status=${query.status}` : "";
+    const links: Record<string, string> = {
+      self: `${base}?page=${result.pagination.currentPage}&perPage=${result.pagination.perPage}${filterSuffix}`,
+    };
+    if (result.pagination.currentPage < result.pagination.totalPages) {
+      links.next = `${base}?page=${result.pagination.currentPage + 1}&perPage=${result.pagination.perPage}${filterSuffix}`;
+    }
+    if (result.pagination.currentPage > 1) {
+      links.prev = `${base}?page=${result.pagination.currentPage - 1}&perPage=${result.pagination.perPage}${filterSuffix}`;
+    }
+
+    return paginatedResponse(res, result.assignments, result.pagination, links);
   } catch (error) {
     next(error);
   }

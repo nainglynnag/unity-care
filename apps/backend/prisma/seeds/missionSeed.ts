@@ -89,7 +89,7 @@ export async function missionSeed() {
 
     const mission = await prisma.mission.create({
       data: {
-        incidentId: incident.id,
+        primaryIncidentId: incident.id,
         createdBy: incident.reportedBy,
         agencyId: agency?.id ?? null,
         missionType: faker.helpers.arrayElement(MISSION_TYPES),

@@ -5,10 +5,11 @@ import {
   registerSchema,
   loginSchema,
   refreshSchema,
+  googleAuthSchema,
 } from "../validators/auth.validator";
 import { successResponse } from "../utils/response";
 import { verifyRefreshToken } from "../utils/jwt";
-import { TokenInvalidError } from "../utils/errors";
+import { TokenInvalidError, UnauthorizedError } from "../utils/errors";
 
 // Register a new user
 export async function register(
@@ -35,6 +36,21 @@ export async function login(req: Request, res: Response, next: NextFunction) {
       parsedData.password,
     );
 
+    return successResponse(res, tokens);
+  } catch (error) {
+    next(error);
+  }
+}
+
+// Google: exchange Google ID token for app tokens (login or signup).
+export async function googleAuth(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const { idToken } = googleAuthSchema.parse(req.body);
+    const tokens = await authService.loginOrRegisterWithGoogle(idToken);
     return successResponse(res, tokens);
   } catch (error) {
     next(error);

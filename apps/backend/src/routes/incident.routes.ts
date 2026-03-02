@@ -24,6 +24,9 @@ router.post(
 // Get a reported incident by a civilian
 router.get("/me", requireRoles("CIVILIAN"), incidentController.listMyIncidents);
 
+// List active incident categories (for report form)
+router.get("/categories", incidentController.listIncidentCategories);
+
 // Get assigned incidents for a volunteer
 router.get(
   "/assigned",

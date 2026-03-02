@@ -14,6 +14,7 @@ const router = Router();
 // Public — limiters run before handler (no auth required)
 router.post("/register", registerLimiter, authController.register);
 router.post("/login", loginLimiter, authController.login);
+router.post("/google", loginLimiter, authController.googleAuth);
 router.post("/refresh", refreshLimiter, authController.refresh);
 
 // Protected — authenticate first so req.user is populated for user-keyed limiters

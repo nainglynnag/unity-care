@@ -183,6 +183,18 @@ export async function createIncident(
   return { incident, emergencyProfile };
 }
 
+// List active incident categories (for civilian report form)
+export async function listIncidentCategories() {
+  const categories = await prisma.incidentCategory.findMany({
+    where: { isActive: true },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, description: true },
+  });
+  const other = categories.filter((c) => c.name === "Other");
+  const rest = categories.filter((c) => c.name !== "Other");
+  return [...rest, ...other];
+}
+
 // Get Single Incident
 // Any authenticated user can view an incident they have access to.
 // Admin/Volunteer can view all incidents with full details.

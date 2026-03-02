@@ -1,5 +1,6 @@
 import { type NextFunction, type Request, type Response } from "express";
 import * as authService from "../services/auth.service";
+import { getMe } from "../services/account.service";
 import {
   registerSchema,
   loginSchema,
@@ -66,13 +67,14 @@ export async function refresh(req: Request, res: Response, next: NextFunction) {
     const payload = verifyRefreshToken(refreshToken);
     if (!payload) return next(new TokenInvalidError());
 
-    const result = await authService.refreshTokens(payload.sub);
+    const result = await authService.refreshTokens(payload.sub, refreshToken);
     return successResponse(res, result);
   } catch (error) {
     next(error);
   }
 }
 
+<<<<<<< HEAD
 // Me (current user) — returns full profile from DB so UI can show name, email, profileImageUrl.
 // Protected — requires authenticate middleware on the route.
 export async function me(req: Request, res: Response, next: NextFunction) {
@@ -80,6 +82,15 @@ export async function me(req: Request, res: Response, next: NextFunction) {
     if (!req.user?.sub) return next(new UnauthorizedError());
     const profile = await authService.getMe(req.user.sub);
     return successResponse(res, profile);
+=======
+// Me (current user)
+// Fetches full user profile from DB — richer than the JWT payload.
+// Protected — requires authenticate middleware on the route.
+export async function me(req: Request, res: Response, next: NextFunction) {
+  try {
+    const user = await getMe(req.user!.sub);
+    return successResponse(res, user);
+>>>>>>> origin/develop
   } catch (error) {
     next(error);
   }

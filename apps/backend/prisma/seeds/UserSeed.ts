@@ -199,6 +199,8 @@ export async function userSeed() {
     create: {
       id: "placeholder-agency",
       name: "Default Agency",
+      latitude: 13.7563,
+      longitude: 100.5018,
       region: "Central",
     },
   });

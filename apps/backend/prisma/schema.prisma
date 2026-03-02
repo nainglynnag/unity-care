@@ -31,7 +31,7 @@ model User {
   reviewedVolunteerApplications  VolunteerApplication[] @relation("VolunteerReviewer")
 
   reportedIncidents Incident[]             @relation("IncidentReporter")
-  verifications     IncidentVerification[]
+  verifications     IncidentVerification[] @relation("VerificationSubmitter")
   uploadedMedia     IncidentMedia[]
 
   createdMissions  Mission[]           @relation("MissionCreator")
@@ -41,8 +41,16 @@ model User {
   missionReports   MissionReport[]
   missionTracking  MissionTracking[]
 
-  notifications Notification[]
-  auditLogs     AuditLog[]     @relation("UserAuditLogs")
+  linkedMissionIncidents MissionIncident[] @relation("MissionIncidentLinker")
+
+  notifications          Notification[]
+  auditLogs              AuditLog[]             @relation("UserAuditLogs")
+  assignedVerifications  IncidentVerification[] @relation("VerificationAssignee")
+  assignerVerifications  IncidentVerification[] @relation("VerificationAssigner")
+  confirmedVerifications IncidentVerification[] @relation("VerificationConfirmer")
+
+  lastLoginAt   DateTime?
+  refreshTokens RefreshToken[]
 }
 
 model Role {
@@ -62,6 +70,23 @@ model UserRole {
   role Role @relation(fields: [roleId], references: [id])
 
   @@id([userId, roleId])
+}
+
+// Stores hashed refresh tokens for server-side session revocation.
+// tokenHash = SHA-256(rawRefreshToken) — raw token is never persisted.
+// Cleanup: lazy on /auth/refresh + daily cron sweep.
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 // User Emergency Profile
@@ -100,6 +125,8 @@ model EmergencyContact {
 model Agency {
   id        String   @id @default(uuid())
   name      String
+  latitude  Float
+  longitude Float
   region    String?
   createdAt DateTime @default(now())
 
@@ -151,18 +178,45 @@ model VolunteerSkill {
 }
 
 model VolunteerApplication {
-  id          String            @id @default(uuid())
-  userId      String
-  agencyId    String
-  status      ApplicationStatus
-  reviewNote  String?
-  reviewedBy  String?
-  submittedAt DateTime          @default(now())
-  reviewedAt  DateTime?
+  id               String    @id @default(uuid())
+  userId           String
+  agencyId         String
+  dateOfBirth      DateTime?
+  nationalIdNumber String?
+  nationalIdUrl    String?
+  address          String?
+  hasTransport     Boolean?
+  experience       String?
+  consentGiven     Boolean   @default(false)
+  consentGivenAt   DateTime?
+
+  certificates ApplicationCertificate[]
+  status       ApplicationStatus
+  reviewNote   String?
+  reviewedBy   String?
+  submittedAt  DateTime                 @default(now())
+  reviewedAt   DateTime?
 
   applicant User   @relation("VolunteerApplicant", fields: [userId], references: [id])
-  reviewer  User?  @relation("VolunteerReviewer", fields: [reviewedBy], references: [id])
+  reviewer  User?  @relation("VolunteerReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
   agency    Agency @relation(fields: [agencyId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+}
+
+model ApplicationCertificate {
+  id            String    @id @default(uuid())
+  applicationId String
+  name          String
+  fileUrl       String
+  issuedBy      String?
+  issuedAt      DateTime?
+  createdAt     DateTime  @default(now())
+
+  application VolunteerApplication @relation(fields: [applicationId], references: [id])
+
+  @@index([applicationId])
 }
 
 // Incident
@@ -191,32 +245,45 @@ model Incident {
   deletedAt   DateTime?
 
   categoryId String
-  reportedBy String
+  reportedBy String?
 
   category IncidentCategory @relation(fields: [categoryId], references: [id])
-  reporter User             @relation("IncidentReporter", fields: [reportedBy], references: [id])
+  reporter User?            @relation("IncidentReporter", fields: [reportedBy], references: [id], onDelete: SetNull)
 
-  verifications IncidentVerification[]
-  media         IncidentMedia[]
-  missions      Mission[]
+  verifications  IncidentVerification[]
+  media          IncidentMedia[]
+  missions       Mission[]              @relation("MissionPrimaryIncident")
+  linkedMissions MissionIncident[]      @relation("LinkedMissionIncident")
 
   @@index([status])
   @@index([createdAt])
 }
 
 model IncidentVerification {
-  id        String               @id @default(uuid())
-  decision  VerificationDecision
-  comment   String?
-  createdAt DateTime             @default(now())
+  id          String                @id @default(uuid())
+  decision    VerificationDecision?
+  comment     String?
+  assignedTo  String?
+  assignedBy  String?
+  assignedAt  DateTime?
+  submittedAt DateTime?
+  isConfirmed Boolean?
+  confirmedBy String?
+  confirmedAt DateTime?
+  confirmNote String?
+  createdAt   DateTime              @default(now())
 
   incidentId String
-  verifiedBy String
+  verifiedBy String?
 
-  incident Incident @relation(fields: [incidentId], references: [id])
-  verifier User     @relation(fields: [verifiedBy], references: [id])
+  incident  Incident @relation(fields: [incidentId], references: [id])
+  assignee  User?    @relation("VerificationAssignee", fields: [assignedTo], references: [id])
+  assigner  User?    @relation("VerificationAssigner", fields: [assignedBy], references: [id])
+  verifier  User?    @relation("VerificationSubmitter", fields: [verifiedBy], references: [id])
+  confirmer User?    @relation("VerificationConfirmer", fields: [confirmedBy], references: [id])
 
   @@index([incidentId])
+  @@index([assignedTo])
 }
 
 model IncidentMedia {
@@ -244,23 +311,40 @@ model Mission {
   onSiteAt    DateTime?
   completedAt DateTime?
 
-  incidentId String
-  createdBy  String
-  agencyId   String?
+  primaryIncidentId String
+  createdBy         String?
+  agencyId          String?
 
-  incident Incident @relation(fields: [incidentId], references: [id])
-  creator  User     @relation("MissionCreator", fields: [createdBy], references: [id])
-  agency   Agency?  @relation(fields: [agencyId], references: [id])
+  primaryIncident Incident @relation("MissionPrimaryIncident", fields: [primaryIncidentId], references: [id])
+  creator         User?    @relation("MissionCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  agency          Agency?  @relation(fields: [agencyId], references: [id])
 
-  assignments MissionAssignment[]
-  logs        MissionLog[]
-  tracking    MissionTracking[]
-  report      MissionReport?
+  linkedIncidents MissionIncident[]
+  assignments     MissionAssignment[]
+  logs            MissionLog[]
+  tracking        MissionTracking[]
+  report          MissionReport?
 
   @@index([status])
+  @@index([primaryIncidentId])
+}
+
+model MissionIncident {
+  missionId  String
+  incidentId String
+  linkedAt   DateTime @default(now())
+  linkedBy   String?
+
+  mission  Mission  @relation(fields: [missionId], references: [id])
+  incident Incident @relation("LinkedMissionIncident", fields: [incidentId], references: [id])
+  linker   User?    @relation("MissionIncidentLinker", fields: [linkedBy], references: [id], onDelete: SetNull)
+
+  @@id([missionId, incidentId])
+  @@index([incidentId])
 }
 
 model MissionAssignment {
+  id           String      @id @default(uuid())
   missionId    String
   assignedTo   String
   assignedBy   String
@@ -272,7 +356,7 @@ model MissionAssignment {
   assignee User    @relation("MissionAssignee", fields: [assignedTo], references: [id])
   assigner User    @relation("MissionAssigner", fields: [assignedBy], references: [id])
 
-  @@id([missionId, assignedTo])
+  @@index([missionId, assignedTo])
 }
 
 model MissionTracking {
@@ -296,10 +380,10 @@ model MissionLog {
   createdAt DateTime      @default(now())
 
   missionId String
-  actorId   String
+  actorId   String?
 
   mission Mission @relation(fields: [missionId], references: [id])
-  actor   User    @relation(fields: [actorId], references: [id])
+  actor   User?   @relation(fields: [actorId], references: [id], onDelete: SetNull)
 }
 
 model MissionReport {
@@ -344,7 +428,7 @@ model AuditLog {
   metadata   Json?
   createdAt  DateTime @default(now())
 
-  actor User? @relation("UserAuditLogs", fields: [actorId], references: [id])
+  actor User? @relation("UserAuditLogs", fields: [actorId], references: [id], onDelete: SetNull)
 }
 
 // Enums
@@ -443,6 +527,7 @@ enum NotificationType {
   MISSION_ON_SITE
   MISSION_COMPLETED
   MISSION_FAILED
+  MISSION_CLOSED
   APPLICATION_SUBMITTED
   APPLICATION_REVIEWED
   GENERAL

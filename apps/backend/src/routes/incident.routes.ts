@@ -3,14 +3,23 @@ import * as incidentController from "../controllers/incident.controller";
 import * as verificationController from "../controllers/incidentVerification.controller";
 import { resolveIncident } from "../controllers/mission.controller";
 import { authenticate, requireRoles } from "../middlewares/auth.middleware";
+import {
+  createIncidentLimiter,
+  submitVerificationLimiter,
+} from "../middlewares/rateLimit";
 import type { IncidentParams } from "../controllers/incident.controller";
 
 const router = Router();
 router.use(authenticate);
 
 // CIVILIAN routes
-// Post an incident by a civilian
-router.post("/", requireRoles("CIVILIAN"), incidentController.createIncident);
+// Post an incident by a civilian — 10 per user per hour
+router.post(
+  "/",
+  requireRoles("CIVILIAN"),
+  createIncidentLimiter,
+  incidentController.createIncident,
+);
 
 // Get a reported incident by a civilian
 router.get("/me", requireRoles("CIVILIAN"), incidentController.listMyIncidents);
@@ -39,10 +48,11 @@ router.patch<IncidentParams>(
   verificationController.assignVerifier,
 );
 
-// Submit a verification result
+// Submit a verification result — 20 per user per hour
 router.post<IncidentParams>(
   "/:id/verification",
   requireRoles("VOLUNTEER", "SUPERADMIN"),
+  submitVerificationLimiter,
   verificationController.submitVerification,
 );
 

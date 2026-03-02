@@ -16,9 +16,80 @@ All success responses use:
     "success": true,
     "timestamp": "...",
     "requestId": "...",
-    "rateLimit": null
+    "rateLimit": {
+      "limit": 200,
+      "remaining": 199,
+      "reset": 845
+    }
   },
   "data": {}
+}
+```
+
+`meta.rateLimit` is populated from rate-limit headers when a limiter is applied.
+If no limiter headers are present for a response, `meta.rateLimit` is `null`.
+
+---
+
+## Rate Limiting
+
+UnityCare uses `express-rate-limit` with standard headers enabled.
+
+### Active limits
+
+| Route                              | Window     | Limit | Key    |
+| ---------------------------------- | ---------- | ----- | ------ |
+| `POST /auth/register`              | 1 hour     | 5     | IP     |
+| `POST /auth/login`                 | 15 minutes | 10    | IP     |
+| `POST /auth/refresh`               | 15 minutes | 30    | IP     |
+| `POST /auth/signout`               | 15 minutes | 10    | userId |
+| `POST /auth/signout-all`           | 15 minutes | 10    | userId |
+| `POST /incidents`                  | 1 hour     | 10    | userId |
+| `POST /incidents/:id/verification` | 1 hour     | 20    | userId |
+| `POST /applications`               | 1 hour     | 5     | userId |
+| `PATCH /account/password`          | 15 minutes | 10    | userId |
+| `PATCH /users/:id/password/reset`  | 15 minutes | 20    | userId |
+| `PATCH /users/:id/status`          | 15 minutes | 20    | userId |
+| `DELETE /users/:id`                | 15 minutes | 20    | userId |
+| All other routes                   | 15 minutes | 200   | IP     |
+
+### Response metadata
+
+On rate-limited routes, `meta.rateLimit` contains:
+
+```json
+{
+  "limit": 10,
+  "remaining": 9,
+  "reset": 840,
+  "retryAfter": 840
+}
+```
+
+- `retryAfter` appears on `429` responses.
+- `reset` is the seconds until the current window resets.
+
+### `429 Too Many Requests` shape
+
+```json
+{
+  "meta": {
+    "success": false,
+    "timestamp": "...",
+    "requestId": "...",
+    "rateLimit": {
+      "limit": 10,
+      "remaining": 0,
+      "reset": 300,
+      "retryAfter": 300
+    }
+  },
+  "data": null,
+  "error": {
+    "code": "RATE_LIMIT_EXCEEDED",
+    "message": "Too many login attempts. Please wait 15 minutes before trying again.",
+    "details": []
+  }
 }
 ```
 

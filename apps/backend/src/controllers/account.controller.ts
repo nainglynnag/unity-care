@@ -93,7 +93,7 @@ export async function softDeleteAccount(
 
 // SUPERADMIN Management───
 
-export interface UserIdParams {
+export interface UserIdParams extends Record<string, string> {
   id: string;
 }
 

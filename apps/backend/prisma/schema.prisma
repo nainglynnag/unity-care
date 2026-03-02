@@ -47,6 +47,9 @@ model User {
   assignedVerifications  IncidentVerification[] @relation("VerificationAssignee")
   assignerVerifications  IncidentVerification[] @relation("VerificationAssigner")
   confirmedVerifications IncidentVerification[] @relation("VerificationConfirmer")
+
+  lastLoginAt   DateTime?
+  refreshTokens RefreshToken[]
 }
 
 model Role {
@@ -66,6 +69,23 @@ model UserRole {
   role Role @relation(fields: [roleId], references: [id])
 
   @@id([userId, roleId])
+}
+
+// Stores hashed refresh tokens for server-side session revocation.
+// tokenHash = SHA-256(rawRefreshToken) — raw token is never persisted.
+// Cleanup: lazy on /auth/refresh + daily cron sweep.
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 // User Emergency Profile
@@ -177,7 +197,7 @@ model VolunteerApplication {
   reviewedAt   DateTime?
 
   applicant User   @relation("VolunteerApplicant", fields: [userId], references: [id])
-  reviewer  User?  @relation("VolunteerReviewer", fields: [reviewedBy], references: [id])
+  reviewer  User?  @relation("VolunteerReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
   agency    Agency @relation(fields: [agencyId], references: [id])
 
   @@index([userId])
@@ -224,10 +244,10 @@ model Incident {
   deletedAt   DateTime?
 
   categoryId String
-  reportedBy String
+  reportedBy String?
 
   category IncidentCategory @relation(fields: [categoryId], references: [id])
-  reporter User             @relation("IncidentReporter", fields: [reportedBy], references: [id])
+  reporter User?            @relation("IncidentReporter", fields: [reportedBy], references: [id], onDelete: SetNull)
 
   verifications  IncidentVerification[]
   media          IncidentMedia[]
@@ -291,11 +311,11 @@ model Mission {
   completedAt DateTime?
 
   primaryIncidentId String
-  createdBy         String
+  createdBy         String?
   agencyId          String?
 
   primaryIncident Incident @relation("MissionPrimaryIncident", fields: [primaryIncidentId], references: [id])
-  creator         User     @relation("MissionCreator", fields: [createdBy], references: [id])
+  creator         User?    @relation("MissionCreator", fields: [createdBy], references: [id], onDelete: SetNull)
   agency          Agency?  @relation(fields: [agencyId], references: [id])
 
   linkedIncidents MissionIncident[]
@@ -312,11 +332,11 @@ model MissionIncident {
   missionId  String
   incidentId String
   linkedAt   DateTime @default(now())
-  linkedBy   String
+  linkedBy   String?
 
   mission  Mission  @relation(fields: [missionId], references: [id])
   incident Incident @relation("LinkedMissionIncident", fields: [incidentId], references: [id])
-  linker   User     @relation("MissionIncidentLinker", fields: [linkedBy], references: [id])
+  linker   User?    @relation("MissionIncidentLinker", fields: [linkedBy], references: [id], onDelete: SetNull)
 
   @@id([missionId, incidentId])
   @@index([incidentId])
@@ -359,10 +379,10 @@ model MissionLog {
   createdAt DateTime      @default(now())
 
   missionId String
-  actorId   String
+  actorId   String?
 
   mission Mission @relation(fields: [missionId], references: [id])
-  actor   User    @relation(fields: [actorId], references: [id])
+  actor   User?   @relation(fields: [actorId], references: [id], onDelete: SetNull)
 }
 
 model MissionReport {
@@ -407,7 +427,7 @@ model AuditLog {
   metadata   Json?
   createdAt  DateTime @default(now())
 
-  actor User? @relation("UserAuditLogs", fields: [actorId], references: [id])
+  actor User? @relation("UserAuditLogs", fields: [actorId], references: [id], onDelete: SetNull)
 }
 
 // Enums

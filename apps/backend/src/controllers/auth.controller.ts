@@ -1,5 +1,6 @@
 import { type NextFunction, type Request, type Response } from "express";
 import * as authService from "../services/auth.service";
+import { getMe } from "../services/account.service";
 import {
   registerSchema,
   loginSchema,
@@ -50,7 +51,7 @@ export async function refresh(req: Request, res: Response, next: NextFunction) {
     const payload = verifyRefreshToken(refreshToken);
     if (!payload) return next(new TokenInvalidError());
 
-    const result = await authService.refreshTokens(payload.sub);
+    const result = await authService.refreshTokens(payload.sub, refreshToken);
     return successResponse(res, result);
   } catch (error) {
     next(error);
@@ -58,11 +59,12 @@ export async function refresh(req: Request, res: Response, next: NextFunction) {
 }
 
 // Me (current user)
-// Returns the decoded token payload attached by the authenticate middleware.
+// Fetches full user profile from DB — richer than the JWT payload.
 // Protected — requires authenticate middleware on the route.
 export async function me(req: Request, res: Response, next: NextFunction) {
   try {
-    return successResponse(res, req.user);
+    const user = await getMe(req.user!.sub);
+    return successResponse(res, user);
   } catch (error) {
     next(error);
   }

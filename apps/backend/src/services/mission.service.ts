@@ -112,7 +112,15 @@ async function notifyAllReporters(
     select: { reportedBy: true },
   });
 
-  const uniqueReporterIds = [...new Set(incidents.map((i) => i.reportedBy))];
+  // Filter null reporterIds (reporter hard-deleted) to avoid creating
+  // notifications with userId: null.
+  const uniqueReporterIds = [
+    ...new Set(
+      incidents
+        .map((i) => i.reportedBy)
+        .filter((id): id is string => id !== null),
+    ),
+  ];
 
   if (uniqueReporterIds.length === 0) return;
 

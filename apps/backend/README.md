@@ -47,6 +47,7 @@ UnityCare uses `express-rate-limit` with standard headers enabled.
 | `POST /incidents`                  | 1 hour     | 10    | userId |
 | `POST /incidents/:id/verification` | 1 hour     | 20    | userId |
 | `POST /applications`               | 1 hour     | 5     | userId |
+| `GET /dashboard/*`                 | 15 minutes | 30    | userId |
 | `PATCH /account/password`          | 15 minutes | 10    | userId |
 | `PATCH /users/:id/password/reset`  | 15 minutes | 20    | userId |
 | `PATCH /users/:id/status`          | 15 minutes | 20    | userId |
@@ -958,6 +959,89 @@ No request body.
 No request body.
 
 **Sample Response `200`**: mission accepted.
+
+---
+
+## Dashboard (`/dashboard`)
+
+All dashboard endpoints require authentication and are rate-limited (`30 req / 15 min / userId`).
+
+### Query parameters
+
+| Param      | Type            | Required | Allowed values                              | Default |
+| ---------- | --------------- | -------- | ------------------------------------------- | ------- |
+| `period`   | `string`        | ❌       | `7d`, `30d`, `90d`, `1y`, `all`             | `30d`   |
+| `agencyId` | `string` (UUID) | ❌       | Required for SUPERADMIN on agency endpoints | -       |
+
+Granularity mapping used by time-series responses:
+
+- `7d` / `30d` -> `day`
+- `90d` -> `week`
+- `1y` / `all` -> `month`
+
+### Endpoints
+
+#### Volunteer (role: `VOLUNTEER`)
+
+| Method | Endpoint                             | Description                                                                   |
+| ------ | ------------------------------------ | ----------------------------------------------------------------------------- |
+| `GET`  | `/dashboard/volunteer/summary`       | Personal KPI summary (missions, success rate, hours served, average duration) |
+| `GET`  | `/dashboard/volunteer/missions`      | Mission breakdown by type/priority with recent missions                       |
+| `GET`  | `/dashboard/volunteer/verifications` | Verification performance and recent verification activity                     |
+
+Notes:
+
+- Scope is always the authenticated volunteer (`req.user.sub`).
+- No `userId` query/body param is accepted.
+
+#### Agency (roles: `VOLUNTEER`, `SUPERADMIN`)
+
+| Method | Endpoint                         | Description                                                 |
+| ------ | -------------------------------- | ----------------------------------------------------------- |
+| `GET`  | `/dashboard/agency/live`         | Real-time operational snapshot (no `period`)                |
+| `GET`  | `/dashboard/agency/incidents`    | Incident funnel, average incident timings, and trend series |
+| `GET`  | `/dashboard/agency/missions`     | Mission funnel, response/duration metrics, and trend series |
+| `GET`  | `/dashboard/agency/volunteers`   | Workforce totals, top performers, dormant volunteers        |
+| `GET`  | `/dashboard/agency/categories`   | Incident category breakdown with outcome rates              |
+| `GET`  | `/dashboard/agency/applications` | Volunteer application pipeline metrics                      |
+
+Scope rules:
+
+- `VOLUNTEER` role is further validated via `AgencyMember` (`COORDINATOR`/`DIRECTOR`) in service layer.
+- `SUPERADMIN` must pass `agencyId` for agency dashboard endpoints.
+- `/dashboard/agency/applications` is restricted to `DIRECTOR` (within `VOLUNTEER`) or `SUPERADMIN`.
+
+#### Admin (roles: `ADMIN`, `SUPERADMIN`)
+
+| Method | Endpoint                        | Description                                       |
+| ------ | ------------------------------- | ------------------------------------------------- |
+| `GET`  | `/dashboard/admin/overview`     | Platform top-line KPIs with period deltas         |
+| `GET`  | `/dashboard/admin/retention`    | User retention/engagement metrics                 |
+| `GET`  | `/dashboard/admin/health`       | Platform health indicators and registration trend |
+| `GET`  | `/dashboard/admin/agencies`     | Cross-agency mission comparison                   |
+| `GET`  | `/dashboard/admin/applications` | Platform-wide application backlog                 |
+
+### Response shape
+
+Dashboard endpoints use the standard success envelope:
+
+```json
+{
+  "meta": {
+    "success": true,
+    "timestamp": "...",
+    "requestId": "...",
+    "rateLimit": {
+      "limit": 30,
+      "remaining": 29,
+      "reset": 840
+    }
+  },
+  "data": {
+    "period": "30d"
+  }
+}
+```
 
 ---
 

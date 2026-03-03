@@ -10,6 +10,7 @@ import volunteerProfileRoutes from "./routes/volunteerProfile.route";
 import missionRoutes from "./routes/mission.routes";
 import accountRoutes from "./routes/account.routes";
 import userRoutes from "./routes/users.routes";
+import dashboardRoutes from "./routes/dashboard.routes";
 import { errorHandler } from "./middlewares/error.middleware";
 import { globalLimiter } from "./middlewares/rateLimit";
 import { scheduleTokenCleanup } from "./jobs/tokenCleanup";
@@ -36,6 +37,7 @@ app.use("/api/v1/volunteer-profiles", volunteerProfileRoutes);
 app.use("/api/v1/missions", missionRoutes);
 app.use("/api/v1/account", accountRoutes);
 app.use("/api/v1/users", userRoutes);
+app.use("/api/v1/dashboard", dashboardRoutes);
 
 app.use(errorHandler);
 

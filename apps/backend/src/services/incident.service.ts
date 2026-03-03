@@ -191,16 +191,25 @@ export async function createIncident(
     referenceId: incident.id,
   });
 
-  // Notify all ADMIN/SUPERADMIN users of the new incident
-  const admins = await prisma.userRole.findMany({
-    where: { role: { name: { in: ["ADMIN", "SUPERADMIN"] } } },
-    select: { userId: true },
-  });
-  const adminIds = admins
-    .map((a) => a.userId)
-    .filter((id) => id !== reportedBy);
+  // Notify all operational staff: ADMIN/SUPERADMIN + COORDINATOR/DIRECTOR
+  const [admins, agencyStaff] = await Promise.all([
+    prisma.userRole.findMany({
+      where: { role: { name: { in: ["ADMIN", "SUPERADMIN"] } } },
+      select: { userId: true },
+    }),
+    prisma.agencyMember.findMany({
+      where: { role: { in: ["COORDINATOR", "DIRECTOR"] } },
+      select: { userId: true },
+    }),
+  ]);
+  const staffIds = [
+    ...new Set([
+      ...admins.map((a) => a.userId),
+      ...agencyStaff.map((a) => a.userId),
+    ]),
+  ].filter((id) => id !== reportedBy);
   emitToMany(
-    adminIds,
+    staffIds,
     "INCIDENT_CREATED",
     "New Incident Reported",
     `A new incident "${incident.title}" has been reported on the platform.`,
@@ -737,6 +746,31 @@ export async function closeIncidentByReporter(
     }),
   ]);
 
+  // Notify operational staff that the reporter closed their incident
+  const [admins, agencyStaff] = await Promise.all([
+    prisma.userRole.findMany({
+      where: { role: { name: { in: ["ADMIN", "SUPERADMIN"] } } },
+      select: { userId: true },
+    }),
+    prisma.agencyMember.findMany({
+      where: { role: { in: ["COORDINATOR", "DIRECTOR"] } },
+      select: { userId: true },
+    }),
+  ]);
+  const staffIds = [
+    ...new Set([
+      ...admins.map((a) => a.userId),
+      ...agencyStaff.map((a) => a.userId),
+    ]),
+  ].filter((id) => id !== reportedBy);
+  emitToMany(
+    staffIds,
+    "INCIDENT_STATUS_UPDATED",
+    "Incident Closed by Reporter",
+    `The reporter has closed incident "${incident.title}". Reason: ${note}`,
+    { type: "INCIDENT", id: incidentId },
+  );
+
   return updated;
 }
 
@@ -791,6 +825,31 @@ export async function updateIncidentStatus(
       referenceId: incidentId,
     });
   }
+
+  // Notify operational staff (except the requester who made the change)
+  const [admins, agencyStaff] = await Promise.all([
+    prisma.userRole.findMany({
+      where: { role: { name: { in: ["ADMIN", "SUPERADMIN"] } } },
+      select: { userId: true },
+    }),
+    prisma.agencyMember.findMany({
+      where: { role: { in: ["COORDINATOR", "DIRECTOR"] } },
+      select: { userId: true },
+    }),
+  ]);
+  const staffIds = [
+    ...new Set([
+      ...admins.map((a) => a.userId),
+      ...agencyStaff.map((a) => a.userId),
+    ]),
+  ].filter((id) => id !== requesterId);
+  emitToMany(
+    staffIds,
+    "INCIDENT_STATUS_UPDATED",
+    "Incident Status Updated",
+    `Incident "${incident.title}" status changed to ${newStatus}.`,
+    { type: "INCIDENT", id: incidentId },
+  );
 
   return updated;
 }

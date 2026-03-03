@@ -496,6 +496,16 @@ export async function startReview(
     },
   });
 
+  // Notify applicant that their application is being reviewed
+  emitNotification({
+    userId: application.userId,
+    type: "APPLICATION_REVIEWED",
+    title: "Application Under Review",
+    message: `Your volunteer application for ${updated.agency.name} is now being reviewed.`,
+    referenceType: "APPLICATION",
+    referenceId: applicationId,
+  });
+
   return updated;
 }
 

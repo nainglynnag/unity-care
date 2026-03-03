@@ -3,6 +3,8 @@ import {
   IncidentStatus,
   VerificationDecision,
 } from "../../generated/prisma/client";
+import { broadcastNotification } from "../ws/broadcast";
+import { emitNotification } from "../utils/notificationEmitter";
 import { isSuperAdmin } from "../middlewares/auth.middleware";
 import {
   IncidentNotFoundError,
@@ -138,6 +140,30 @@ export async function assignVerifier(
     }),
   ]);
 
+  // WS broadcast (after transaction committed)
+  broadcastNotification(data.volunteerId, {
+    id: "",
+    type: "VERIFICATION_REQUESTED",
+    title: "Verification Assignment",
+    message: `You have been assigned to verify incident: "${incident.title}". Please go on-site and submit your result.`,
+    referenceType: "INCIDENT",
+    referenceId: incidentId,
+    isRead: false,
+    createdAt: new Date(),
+  });
+
+  // Notify the reporter that their incident is being verified
+  if (incident.reportedBy) {
+    emitNotification({
+      userId: incident.reportedBy,
+      type: "INCIDENT_STATUS_UPDATED",
+      title: "Incident Verification Started",
+      message: `A volunteer has been assigned to verify your incident: "${incident.title}". We will update you with the result.`,
+      referenceType: "INCIDENT",
+      referenceId: incidentId,
+    });
+  }
+
   return verification;
 }
 
@@ -217,6 +243,20 @@ export async function submitVerification(
     return result;
   });
 
+  // WS broadcast (after transaction committed)
+  if (verification.assignedBy) {
+    broadcastNotification(verification.assignedBy, {
+      id: "",
+      type: "VERIFICATION_COMPLETED",
+      title: "Verification Result Submitted",
+      message: `${verification.assignee?.name} submitted result for "${verification.incident.title}": ${data.decision}.${data.comment ? ` Note: ${data.comment}` : ""}`,
+      referenceType: "INCIDENT",
+      referenceId: incidentId,
+      isRead: false,
+      createdAt: new Date(),
+    });
+  }
+
   return updated;
 }
 
@@ -292,6 +332,34 @@ export async function confirmVerification(
       }),
     ]);
 
+    // WS broadcast (after transaction committed)
+    broadcastNotification(verification.assignedTo!, {
+      id: "",
+      type: "INCIDENT_STATUS_UPDATED",
+      title: "Verification Confirmed",
+      message: `Your verification result for "${verification.incident.title}" has been confirmed as ${verification.decision}.`,
+      referenceType: "INCIDENT",
+      referenceId: incidentId,
+      isRead: false,
+      createdAt: new Date(),
+    });
+
+    // Notify the reporter of the verification outcome
+    const confirmedIncident = await prisma.incident.findUnique({
+      where: { id: incidentId },
+      select: { reportedBy: true, title: true },
+    });
+    if (confirmedIncident?.reportedBy) {
+      emitNotification({
+        userId: confirmedIncident.reportedBy,
+        type: "INCIDENT_STATUS_UPDATED",
+        title: "Incident Verification Result",
+        message: `Your incident "${confirmedIncident.title}" has been verified as ${verification.decision}.`,
+        referenceType: "INCIDENT",
+        referenceId: incidentId,
+      });
+    }
+
     return updated;
   }
 
@@ -336,6 +404,18 @@ export async function confirmVerification(
       },
     }),
   ]);
+
+  // WS broadcast (after transaction committed)
+  broadcastNotification(verification.assignedTo!, {
+    id: "",
+    type: "VERIFICATION_COMPLETED",
+    title: "Verification Result Rejected",
+    message: `Your verification result for "${verification.incident.title}" was not accepted. Reason: ${data.confirmNote}. Please re-assess and resubmit.`,
+    referenceType: "INCIDENT",
+    referenceId: incidentId,
+    isRead: false,
+    createdAt: new Date(),
+  });
 
   return created;
 }
@@ -412,6 +492,18 @@ export async function retryVerification(
       },
     }),
   ]);
+
+  // WS broadcast (after transaction committed)
+  broadcastNotification(data.volunteerId, {
+    id: "",
+    type: "VERIFICATION_REQUESTED",
+    title: "Verification Retry Assignment",
+    message: `You have been assigned to re-verify incident: "${incident.title}". A previous attempt was marked UNREACHABLE. Please assess and submit your result.`,
+    referenceType: "INCIDENT",
+    referenceId: incidentId,
+    isRead: false,
+    createdAt: new Date(),
+  });
 
   return verification;
 }

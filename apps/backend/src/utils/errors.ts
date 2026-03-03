@@ -521,3 +521,129 @@ export class CannotDeleteVolunteerOnMissionError extends AppError {
     );
   }
 }
+
+// Reference Data (Skills / Categories / Agencies)
+
+export class SkillNotFoundError extends AppError {
+  constructor() {
+    super("SKILL_NOT_FOUND", "The requested skill could not be found.", 404);
+  }
+}
+
+export class SkillNameConflictError extends AppError {
+  constructor() {
+    super("SKILL_NAME_CONFLICT", "A skill with this name already exists.", 409);
+  }
+}
+
+export class CategoryNameConflictError extends AppError {
+  constructor() {
+    super(
+      "CATEGORY_NAME_CONFLICT",
+      "A category with this name already exists.",
+      409,
+    );
+  }
+}
+
+export class AgencyNameConflictError extends AppError {
+  constructor() {
+    super(
+      "AGENCY_NAME_CONFLICT",
+      "An agency with this name already exists.",
+      409,
+    );
+  }
+}
+
+export class CannotDeactivateWithActiveDataError extends AppError {
+  constructor(entity: "skill" | "category" | "agency") {
+    super(
+      "CANNOT_DEACTIVATE_WITH_ACTIVE_DATA",
+      `This ${entity} cannot be deactivated because it has active records linked to it.`,
+      400,
+    );
+  }
+}
+
+export class CannotDeleteWithLinkedDataError extends AppError {
+  constructor(entity: "skill" | "category" | "agency") {
+    super(
+      "CANNOT_DELETE_WITH_LINKED_DATA",
+      `This ${entity} cannot be deleted because it has records linked to it. Consider deactivating instead.`,
+      400,
+    );
+  }
+}
+
+// Notifications
+
+export class NotificationNotFoundError extends AppError {
+  constructor() {
+    super("NOTIFICATION_NOT_FOUND", "Notification not found.", 404);
+  }
+}
+
+// Agency Members
+
+export class AgencyMemberNotFoundError extends AppError {
+  constructor() {
+    super(
+      "AGENCY_MEMBER_NOT_FOUND",
+      "This user is not a member of the specified agency.",
+      404,
+    );
+  }
+}
+
+export class CannotChangeOwnRoleError extends AppError {
+  constructor() {
+    super(
+      "CANNOT_CHANGE_OWN_ROLE",
+      "You cannot change your own agency role.",
+      400,
+    );
+  }
+}
+
+export class DirectorRequiredError extends AppError {
+  constructor() {
+    super(
+      "DIRECTOR_REQUIRED",
+      "An agency must have at least one director. Promote another member to director first.",
+      409,
+    );
+  }
+}
+
+// Mission Tracking
+
+export class NotAssignedToMissionError extends AppError {
+  constructor() {
+    super(
+      "NOT_ASSIGNED_TO_MISSION",
+      "You are not currently assigned to this mission.",
+      403,
+    );
+  }
+}
+
+export class TrackingNotAllowedError extends AppError {
+  constructor() {
+    super(
+      "TRACKING_NOT_ALLOWED",
+      "GPS tracking can only be submitted while the mission is EN_ROUTE or ON_SITE.",
+      400,
+    );
+  }
+}
+
+export class TrackingRateLimitError extends AppError {
+  constructor() {
+    super(
+      "TRACKING_RATE_LIMIT",
+      "GPS update submitted too recently. Please wait at least 15 seconds between updates.",
+      429,
+    );
+  }
+}

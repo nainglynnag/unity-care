@@ -40,3 +40,20 @@ export function verifyRefreshToken(token: string): JwtPayload | null {
     return null;
   }
 }
+
+// Detailed verification result for WebSocket auth.
+// Distinguishes expired (4003 close code) from invalid (4001 close code).
+export type VerifyResult =
+  | { status: "valid"; payload: JwtPayload }
+  | { status: "expired" }
+  | { status: "invalid" };
+
+export function verifyAccessTokenDetailed(token: string): VerifyResult {
+  try {
+    const payload = jwt.verify(token, ACCESS_SECRET) as JwtPayload;
+    return { status: "valid", payload };
+  } catch (err) {
+    if (err instanceof jwt.TokenExpiredError) return { status: "expired" };
+    return { status: "invalid" };
+  }
+}

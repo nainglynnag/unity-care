@@ -35,6 +35,10 @@ import type {
   ResolveIncidentInput,
   ListMissionsQuery,
 } from "../validators/mission.validator";
+import {
+  broadcastNotification,
+  broadcastMissionTerminal,
+} from "../ws/broadcast";
 
 // Private helpers
 
@@ -97,6 +101,7 @@ async function resolveCoordinatorAuthority(
 
 // Collects unique reporters across primary + all linked incidents.
 // Called inside $transaction so notifications are atomic.
+// Returns the reporter userIds so callers can broadcast after tx commits.
 async function notifyAllReporters(
   tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
   missionId: string,
@@ -105,7 +110,7 @@ async function notifyAllReporters(
   type: NotificationType,
   title: string,
   message: string,
-): Promise<void> {
+): Promise<string[]> {
   const allIds = [primaryIncidentId, ...linkedIncidentIds];
   const incidents = await tx.incident.findMany({
     where: { id: { in: allIds } },
@@ -122,7 +127,7 @@ async function notifyAllReporters(
     ),
   ];
 
-  if (uniqueReporterIds.length === 0) return;
+  if (uniqueReporterIds.length === 0) return [];
 
   await tx.notification.createMany({
     data: uniqueReporterIds.map((userId) => ({
@@ -135,6 +140,35 @@ async function notifyAllReporters(
       isRead: false,
     })),
   });
+
+  return uniqueReporterIds;
+}
+
+// WS broadcast helper. Sends a simplified notification payload to each user's
+// personal WS room after a transaction commits. id is empty because createMany
+// does not return individual rows — the client uses referenceType + referenceId
+// to deduplicate and fetches full data via REST if needed.
+function broadcastNotificationsToUsers(
+  userIds: string[],
+  type: string,
+  title: string,
+  message: string,
+  referenceType: string,
+  referenceId: string,
+): void {
+  const now = new Date();
+  for (const userId of userIds) {
+    broadcastNotification(userId, {
+      id: "",
+      type,
+      title,
+      message,
+      referenceType,
+      referenceId,
+      isRead: false,
+      createdAt: now,
+    });
+  }
 }
 
 // Shared fetch + access control used by all action handlers.
@@ -262,7 +296,7 @@ export async function createMission(
   }
 
   // 5. Atomic transaction
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     // 5a. Create Mission — status ASSIGNED (never stays CREATED externally)
     const mission = await tx.mission.create({
       data: {
@@ -329,7 +363,7 @@ export async function createMission(
     });
 
     // 5f. Notify all reporters (primary + linked) — deduped
-    await notifyAllReporters(
+    const reporterIds = await notifyAllReporters(
       tx,
       mission.id,
       data.primaryIncidentId,
@@ -339,8 +373,8 @@ export async function createMission(
       `A volunteer team has been dispatched to assist with your reported incident: "${primaryIncident.title}".`,
     );
 
-    // 5g. Return with full relations
-    return tx.mission.findUniqueOrThrow({
+    // 5g. Return with full relations + reporter IDs for WS broadcast
+    const fullMission = await tx.mission.findUniqueOrThrow({
       where: { id: mission.id },
       include: {
         primaryIncident: {
@@ -368,7 +402,29 @@ export async function createMission(
         logs: { orderBy: { createdAt: "asc" } },
       },
     });
+
+    return { fullMission, reporterIds };
   });
+
+  // WS broadcasts (after transaction committed)
+  broadcastNotificationsToUsers(
+    volunteerIds,
+    NotificationType.MISSION_ASSIGNED,
+    "Mission Assigned",
+    `You have been assigned for mission responding to: "${primaryIncident.title}".`,
+    "MISSION",
+    result.fullMission.id,
+  );
+  broadcastNotificationsToUsers(
+    result.reporterIds,
+    NotificationType.MISSION_CREATED,
+    "Help Is On The Way",
+    `A volunteer team has been dispatched to assist with your reported incident: "${primaryIncident.title}".`,
+    "MISSION",
+    result.fullMission.id,
+  );
+
+  return result.fullMission;
 }
 
 // acceptMission — UC-V-05
@@ -390,8 +446,10 @@ export async function acceptMission(
   );
   if (!assignment) throw new ForbiddenError();
 
-  return prisma.$transaction(async (tx) => {
-    const updated = await tx.mission.update({
+  let coordinatorIds: string[] = [];
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const result = await tx.mission.update({
       where: { id: missionId },
       data: {
         status: MissionStatus.ACCEPTED,
@@ -416,6 +474,7 @@ export async function acceptMission(
         },
         select: { userId: true },
       });
+      coordinatorIds = coordinators.map((c) => c.userId);
       await tx.notification.createMany({
         data: coordinators.map((c) => ({
           userId: c.userId,
@@ -429,8 +488,20 @@ export async function acceptMission(
       });
     }
 
-    return updated;
+    return result;
   });
+
+  // WS broadcast (after transaction committed)
+  broadcastNotificationsToUsers(
+    coordinatorIds,
+    NotificationType.MISSION_ACCEPTED,
+    "Mission Accepted",
+    `A volunteer accepted the mission for: "${mission.primaryIncident.title}".`,
+    "MISSION",
+    missionId,
+  );
+
+  return updated;
 }
 
 // rejectMission — UC-V-05 alternate flow
@@ -456,7 +527,9 @@ export async function rejectMission(
   );
   if (!assignment) throw new ForbiddenError();
 
-  return prisma.$transaction(async (tx) => {
+  let coordinatorIds: string[] = [];
+
+  const result = await prisma.$transaction(async (tx) => {
     await tx.missionLog.create({
       data: {
         missionId,
@@ -474,6 +547,7 @@ export async function rejectMission(
         },
         select: { userId: true },
       });
+      coordinatorIds = coordinators.map((c) => c.userId);
       await tx.notification.createMany({
         data: coordinators.map((c) => ({
           userId: c.userId,
@@ -489,6 +563,18 @@ export async function rejectMission(
 
     return tx.mission.findUniqueOrThrow({ where: { id: missionId } });
   });
+
+  // WS broadcast (after transaction committed)
+  broadcastNotificationsToUsers(
+    coordinatorIds,
+    NotificationType.MISSION_REJECTED,
+    "Mission Rejected — Action Required",
+    `A volunteer rejected the mission for: "${mission.primaryIncident.title}". Please reassign or close the mission.`,
+    "MISSION",
+    missionId,
+  );
+
+  return result;
 }
 
 // agencyDecision — COORDINATOR response to volunteer rejection
@@ -521,7 +607,11 @@ export async function agencyDecision(
     throw new MissionNotActionableError("agencyDecision", mission.status);
   }
 
-  return prisma.$transaction(async (tx) => {
+  let reporterIds: string[] = [];
+  let isFailed = false;
+  let newVolunteerIdForBroadcast: string | null = null;
+
+  const result = await prisma.$transaction(async (tx) => {
     if (data.decision === "FAIL") {
       assertTransition(mission.status as MissionStatus, MissionStatus.FAILED);
 
@@ -540,7 +630,7 @@ export async function agencyDecision(
       });
 
       const linkedIds = getLinkedIds(mission);
-      await notifyAllReporters(
+      reporterIds = await notifyAllReporters(
         tx,
         missionId,
         mission.primaryIncident.id,
@@ -550,10 +640,11 @@ export async function agencyDecision(
         `We were unable to dispatch a team for: "${mission.primaryIncident.title}". The agency has been notified.`,
       );
 
+      isFailed = true;
       return updated;
     }
 
-    // CONTINUE → reassign to new volunteer
+    // CONTINUE -> reassign to new volunteer
     const newVolunteerId = data.volunteerId!;
 
     const profile = await tx.volunteerProfile.findUnique({
@@ -608,8 +699,33 @@ export async function agencyDecision(
       },
     });
 
+    newVolunteerIdForBroadcast = newVolunteerId;
     return tx.mission.findUniqueOrThrow({ where: { id: missionId } });
   });
+
+  // WS broadcasts (after transaction committed)
+  if (isFailed) {
+    broadcastNotificationsToUsers(
+      reporterIds,
+      NotificationType.MISSION_FAILED,
+      "Mission Could Not Be Completed",
+      `We were unable to dispatch a team for: "${mission.primaryIncident.title}". The agency has been notified.`,
+      "MISSION",
+      missionId,
+    );
+    broadcastMissionTerminal(missionId);
+  } else if (newVolunteerIdForBroadcast) {
+    broadcastNotificationsToUsers(
+      [newVolunteerIdForBroadcast],
+      NotificationType.MISSION_ASSIGNED,
+      "Mission Assigned",
+      `You have been assigned to a mission for: "${mission.primaryIncident.title}". Please accept or reject.`,
+      "MISSION",
+      missionId,
+    );
+  }
+
+  return result;
 }
 
 // startTravel
@@ -632,8 +748,10 @@ export async function startTravel(
   );
   if (!isLeader) throw new NotMissionLeaderError();
 
-  return prisma.$transaction(async (tx) => {
-    const updated = await tx.mission.update({
+  let reporterIds: string[] = [];
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const result = await tx.mission.update({
       where: { id: missionId },
       data: { status: MissionStatus.EN_ROUTE },
     });
@@ -658,7 +776,7 @@ export async function startTravel(
     });
 
     const linkedIds = getLinkedIds(mission);
-    await notifyAllReporters(
+    reporterIds = await notifyAllReporters(
       tx,
       missionId,
       mission.primaryIncident.id,
@@ -668,8 +786,20 @@ export async function startTravel(
       `A volunteer team is now en route to your incident: "${mission.primaryIncident.title}".`,
     );
 
-    return updated;
+    return result;
   });
+
+  // WS broadcast (after transaction committed)
+  broadcastNotificationsToUsers(
+    reporterIds,
+    NotificationType.MISSION_EN_ROUTE,
+    "Volunteers Are On Their Way",
+    `A volunteer team is now en route to your incident: "${mission.primaryIncident.title}".`,
+    "MISSION",
+    missionId,
+  );
+
+  return updated;
 }
 
 // arriveOnSite
@@ -692,8 +822,10 @@ export async function arriveOnSite(
   );
   if (!isLeader) throw new NotMissionLeaderError();
 
-  return prisma.$transaction(async (tx) => {
-    const updated = await tx.mission.update({
+  let reporterIds: string[] = [];
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const result = await tx.mission.update({
       where: { id: missionId },
       data: { status: MissionStatus.ON_SITE, onSiteAt: new Date() },
     });
@@ -718,7 +850,7 @@ export async function arriveOnSite(
     });
 
     const linkedIds = getLinkedIds(mission);
-    await notifyAllReporters(
+    reporterIds = await notifyAllReporters(
       tx,
       missionId,
       mission.primaryIncident.id,
@@ -728,8 +860,20 @@ export async function arriveOnSite(
       `The volunteer team has arrived at the scene of your incident: "${mission.primaryIncident.title}".`,
     );
 
-    return updated;
+    return result;
   });
+
+  // WS broadcast (after transaction committed)
+  broadcastNotificationsToUsers(
+    reporterIds,
+    NotificationType.MISSION_ON_SITE,
+    "Volunteers Have Arrived",
+    `The volunteer team has arrived at the scene of your incident: "${mission.primaryIncident.title}".`,
+    "MISSION",
+    missionId,
+  );
+
+  return updated;
 }
 
 // startWork — (ON_SITE → IN_PROGRESS)
@@ -752,8 +896,10 @@ export async function startWork(
   );
   if (!isLeader) throw new NotMissionLeaderError();
 
-  return prisma.$transaction(async (tx) => {
-    const updated = await tx.mission.update({
+  let reporterIds: string[] = [];
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const result = await tx.mission.update({
       where: { id: missionId },
       data: { status: MissionStatus.IN_PROGRESS },
     });
@@ -777,8 +923,31 @@ export async function startWork(
       },
     });
 
-    return updated;
+    const linkedIds = getLinkedIds(mission);
+    reporterIds = await notifyAllReporters(
+      tx,
+      missionId,
+      mission.primaryIncident.id,
+      linkedIds,
+      NotificationType.MISSION_IN_PROGRESS,
+      "Volunteers Working on Your Case",
+      `The volunteer team has started working on your incident: "${mission.primaryIncident.title}".`,
+    );
+
+    return result;
   });
+
+  // WS broadcast (after transaction committed)
+  broadcastNotificationsToUsers(
+    reporterIds,
+    NotificationType.MISSION_IN_PROGRESS,
+    "Volunteers Working on Your Case",
+    `The volunteer team has started working on your incident: "${mission.primaryIncident.title}".`,
+    "MISSION",
+    missionId,
+  );
+
+  return updated;
 }
 
 // submitCompletionReport
@@ -801,7 +970,9 @@ export async function submitCompletionReport(
   );
   if (!isLeader) throw new NotMissionLeaderError();
 
-  return prisma.$transaction(async (tx) => {
+  let coordinatorIds: string[] = [];
+
+  const updated = await prisma.$transaction(async (tx) => {
     await tx.missionReport.create({
       data: {
         missionId,
@@ -814,7 +985,7 @@ export async function submitCompletionReport(
       },
     });
 
-    const updated = await tx.mission.update({
+    const result = await tx.mission.update({
       where: { id: missionId },
       data: {
         status: MissionStatus.COMPLETED,
@@ -849,6 +1020,7 @@ export async function submitCompletionReport(
         },
         select: { userId: true },
       });
+      coordinatorIds = coordinators.map((c) => c.userId);
       await tx.notification.createMany({
         data: coordinators.map((c) => ({
           userId: c.userId,
@@ -862,8 +1034,20 @@ export async function submitCompletionReport(
       });
     }
 
-    return updated;
+    return result;
   });
+
+  // WS broadcast (after transaction committed)
+  broadcastNotificationsToUsers(
+    coordinatorIds,
+    NotificationType.MISSION_COMPLETED,
+    "Mission Completion Report Submitted",
+    `The LEADER has submitted a completion report for the mission on: "${mission.primaryIncident.title}". Please review and confirm or reject.`,
+    "MISSION",
+    missionId,
+  );
+
+  return updated;
 }
 
 // confirmCompletion
@@ -884,15 +1068,18 @@ export async function confirmCompletion(
     throw new MissionNotActionableError("confirmCompletion", mission.status);
   }
 
-  return prisma.$transaction(async (tx) => {
+  let reporterIds: string[] = [];
+  let isClosed = false;
+
+  const updated = await prisma.$transaction(async (tx) => {
     const linkedIds = getLinkedIds(mission);
 
     if (data.confirmed) {
       assertTransition(MissionStatus.COMPLETED, MissionStatus.CLOSED);
 
-      const updated = await tx.mission.update({
+      const result = await tx.mission.update({
         where: { id: missionId },
-        data: { status: MissionStatus.CLOSED },
+        data: { status: MissionStatus.CLOSED, closedAt: new Date() },
       });
 
       await tx.missionLog.create({
@@ -909,7 +1096,7 @@ export async function confirmCompletion(
         data: { status: IncidentStatus.RESOLVED },
       });
 
-      await notifyAllReporters(
+      reporterIds = await notifyAllReporters(
         tx,
         missionId,
         mission.primaryIncident.id,
@@ -919,12 +1106,29 @@ export async function confirmCompletion(
         `The volunteer team has successfully completed their mission for your incident: "${mission.primaryIncident.title}".`,
       );
 
-      return updated;
+      // Notify assigned volunteers that the mission is officially closed
+      const volunteerIds = mission.assignments.map((a) => a.assignedTo);
+      if (volunteerIds.length > 0) {
+        await tx.notification.createMany({
+          data: volunteerIds.map((vid) => ({
+            userId: vid,
+            type: NotificationType.MISSION_CLOSED,
+            title: "Mission Closed \u2014 Thank You",
+            message: `The mission for "${mission.primaryIncident.title}" has been confirmed and closed. Thank you for your service.`,
+            referenceType: "MISSION",
+            referenceId: missionId,
+            isRead: false,
+          })),
+        });
+      }
+
+      isClosed = true;
+      return result;
     } else {
-      // Rejected → back to ASSIGNED (more work needed)
+      // Rejected -> back to ASSIGNED (more work needed)
       assertTransition(MissionStatus.COMPLETED, MissionStatus.ASSIGNED);
 
-      const updated = await tx.mission.update({
+      const result = await tx.mission.update({
         where: { id: missionId },
         data: { status: MissionStatus.ASSIGNED, completedAt: null },
       });
@@ -951,9 +1155,44 @@ export async function confirmCompletion(
         })),
       });
 
-      return updated;
+      return result;
     }
   });
+
+  // WS broadcasts (after transaction committed)
+  if (isClosed) {
+    broadcastNotificationsToUsers(
+      reporterIds,
+      NotificationType.MISSION_CLOSED,
+      "Mission Completed",
+      `The volunteer team has successfully completed their mission for your incident: "${mission.primaryIncident.title}".`,
+      "MISSION",
+      missionId,
+    );
+    // Notify assigned volunteers that the mission is officially closed
+    const assignedVolunteerIds = mission.assignments.map((a) => a.assignedTo);
+    broadcastNotificationsToUsers(
+      assignedVolunteerIds,
+      NotificationType.MISSION_CLOSED,
+      "Mission Closed — Thank You",
+      `The mission for "${mission.primaryIncident.title}" has been confirmed and closed. Thank you for your service.`,
+      "MISSION",
+      missionId,
+    );
+    broadcastMissionTerminal(missionId);
+  } else {
+    const assignedVolunteerIds = mission.assignments.map((a) => a.assignedTo);
+    broadcastNotificationsToUsers(
+      assignedVolunteerIds,
+      NotificationType.MISSION_ASSIGNED,
+      "Completion Report Rejected",
+      `Your completion report for the mission on: "${mission.primaryIncident.title}" was not accepted. Reason: ${data.note}. Please continue the mission.`,
+      "MISSION",
+      missionId,
+    );
+  }
+
+  return updated;
 }
 
 // cancelMission — COORDINATOR/DIRECTOR/SUPERADMIN cancels an active mission
@@ -972,8 +1211,10 @@ export async function cancelMission(
 
   assertTransition(mission.status as MissionStatus, MissionStatus.CANCELLED);
 
-  return prisma.$transaction(async (tx) => {
-    const updated = await tx.mission.update({
+  let reporterIds: string[] = [];
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const result = await tx.mission.update({
       where: { id: missionId },
       data: { status: MissionStatus.CANCELLED },
     });
@@ -1005,7 +1246,7 @@ export async function cancelMission(
 
     // Notify reporters
     const linkedIds = getLinkedIds(mission);
-    await notifyAllReporters(
+    reporterIds = await notifyAllReporters(
       tx,
       missionId,
       mission.primaryIncident.id,
@@ -1015,8 +1256,30 @@ export async function cancelMission(
       `The mission responding to your incident: "${mission.primaryIncident.title}" has been cancelled.`,
     );
 
-    return updated;
+    return result;
   });
+
+  // WS broadcasts (after transaction committed)
+  const assignedVolunteerIds = mission.assignments.map((a) => a.assignedTo);
+  broadcastNotificationsToUsers(
+    assignedVolunteerIds,
+    NotificationType.MISSION_FAILED,
+    "Mission Cancelled",
+    `The mission for: "${mission.primaryIncident.title}" has been cancelled. Reason: ${data.note}`,
+    "MISSION",
+    missionId,
+  );
+  broadcastNotificationsToUsers(
+    reporterIds,
+    NotificationType.MISSION_FAILED,
+    "Mission Cancelled",
+    `The mission responding to your incident: "${mission.primaryIncident.title}" has been cancelled.`,
+    "MISSION",
+    missionId,
+  );
+  broadcastMissionTerminal(missionId);
+
+  return updated;
 }
 
 // reportFailure — Volunteer or COORDINATOR reports site inaccessible / mission failed
@@ -1034,8 +1297,11 @@ export async function reportFailure(
 
   assertTransition(mission.status as MissionStatus, MissionStatus.FAILED);
 
-  return prisma.$transaction(async (tx) => {
-    const updated = await tx.mission.update({
+  let coordinatorIds: string[] = [];
+  let reporterIds: string[] = [];
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const result = await tx.mission.update({
       where: { id: missionId },
       data: { status: MissionStatus.FAILED },
     });
@@ -1073,6 +1339,7 @@ export async function reportFailure(
         },
         select: { userId: true },
       });
+      coordinatorIds = coordinators.map((c) => c.userId);
       await tx.notification.createMany({
         data: coordinators.map((c) => ({
           userId: c.userId,
@@ -1088,7 +1355,7 @@ export async function reportFailure(
 
     // Notify reporters
     const linkedIds = getLinkedIds(mission);
-    await notifyAllReporters(
+    reporterIds = await notifyAllReporters(
       tx,
       missionId,
       mission.primaryIncident.id,
@@ -1098,8 +1365,29 @@ export async function reportFailure(
       `We were unable to complete the mission for your incident: "${mission.primaryIncident.title}". The agency has been notified.`,
     );
 
-    return updated;
+    return result;
   });
+
+  // WS broadcasts (after transaction committed)
+  broadcastNotificationsToUsers(
+    coordinatorIds,
+    NotificationType.MISSION_FAILED,
+    "Mission Failed",
+    `A mission for: "${mission.primaryIncident.title}" has been reported as failed. Reason: ${data.reason}`,
+    "MISSION",
+    missionId,
+  );
+  broadcastNotificationsToUsers(
+    reporterIds,
+    NotificationType.MISSION_FAILED,
+    "Mission Could Not Be Completed",
+    `We were unable to complete the mission for your incident: "${mission.primaryIncident.title}". The agency has been notified.`,
+    "MISSION",
+    missionId,
+  );
+  broadcastMissionTerminal(missionId);
+
+  return updated;
 }
 
 // resolveIncident — explicit COORDINATOR/DIRECTOR action (VERIFIED → RESOLVED)
@@ -1184,6 +1472,33 @@ export async function resolveIncident(
         metadata: { note: data.note, resolvedBy: requesterId },
       },
     });
+
+    // Notify the reporter that their incident has been fully resolved
+    if (incident.reportedBy) {
+      await tx.notification.create({
+        data: {
+          userId: incident.reportedBy,
+          type: NotificationType.INCIDENT_STATUS_UPDATED,
+          title: "Incident Resolved",
+          message: `Your incident "${incident.title}" has been fully resolved. Thank you for reporting.`,
+          referenceType: "INCIDENT",
+          referenceId: incidentId,
+          isRead: false,
+        },
+      });
+    }
+
+    // WS broadcast to reporter (inside tx, but tx commits immediately after)
+    if (incident.reportedBy) {
+      broadcastNotificationsToUsers(
+        [incident.reportedBy],
+        NotificationType.INCIDENT_STATUS_UPDATED,
+        "Incident Resolved",
+        `Your incident "${incident.title}" has been fully resolved. Thank you for reporting.`,
+        "INCIDENT",
+        incidentId,
+      );
+    }
 
     return updated;
   });

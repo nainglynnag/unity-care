@@ -31,6 +31,133 @@ If no limiter headers are present for a response, `meta.rateLimit` is `null`.
 
 ---
 
+## WebSocket Integration (Frontend)
+
+This backend branch supports real-time events over WebSocket for:
+
+- user notifications
+- mission live tracking updates
+- mission terminal-state broadcast (`MISSION_CLOSED`)
+
+### Endpoint
+
+- Local: `ws://localhost:3000/ws`
+- Uses the same server as HTTP API (upgrade on `/ws` path)
+
+### Authentication flow (required)
+
+Connection is accepted first, then authenticated (Option B).
+
+1. Connect to `/ws`
+2. Within 5 seconds, send:
+
+```json
+{ "type": "AUTH", "token": "<accessToken>" }
+```
+
+3. On success, server replies:
+
+```json
+{ "type": "AUTH_SUCCESS", "userId": "<uuid>", "role": "VOLUNTEER" }
+```
+
+If auth is missing/invalid:
+
+- `4005` auth timeout (no AUTH in time)
+- `4001` invalid token
+- `4003` expired token
+
+### Client -> Server messages
+
+```json
+{ "type": "AUTH", "token": "<jwt>" }
+{ "type": "SUBSCRIBE_MISSION", "missionId": "<uuid>" }
+{ "type": "UNSUBSCRIBE_MISSION", "missionId": "<uuid>" }
+{ "type": "PING" }
+```
+
+### Server -> Client messages
+
+```json
+{ "type": "AUTH_SUCCESS", "userId": "<uuid>", "role": "VOLUNTEER" }
+{ "type": "SUBSCRIBED", "missionId": "<uuid>" }
+{ "type": "UNSUBSCRIBED", "missionId": "<uuid>" }
+{ "type": "PONG" }
+{ "type": "ERROR", "code": 4007, "message": "Mission access denied." }
+{ "type": "MISSION_CLOSED", "missionId": "<uuid>" }
+```
+
+Notification event:
+
+```json
+{
+  "type": "NOTIFICATION",
+  "data": {
+    "id": "<uuid-or-empty>",
+    "type": "INCIDENT_CREATED",
+    "title": "...",
+    "message": "...",
+    "referenceType": "INCIDENT",
+    "referenceId": "<uuid>",
+    "isRead": false,
+    "createdAt": "2026-03-03T12:00:00.000Z"
+  }
+}
+```
+
+Tracking event:
+
+```json
+{
+  "type": "TRACKING_UPDATE",
+  "data": {
+    "volunteerId": "<uuid>",
+    "latitude": 13.7563,
+    "longitude": 100.5018,
+    "recordedAt": "2026-03-03T12:00:00.000Z"
+  }
+}
+```
+
+### Mission subscription access rules
+
+`SUBSCRIBE_MISSION` is allowed for:
+
+- `ADMIN`, `SUPERADMIN`: any mission
+- `VOLUNTEER`: assigned volunteer OR agency `COORDINATOR`/`DIRECTOR`
+
+Denied:
+
+- `CIVILIAN` always denied (`ERROR` code `4007`)
+- unknown mission (`ERROR` code `4006`)
+
+### Close / error codes used
+
+- `4001` Unauthorized (invalid token or unauthenticated flow)
+- `4002` Forbidden (role not allowed)
+- `4003` Token expired
+- `4004` Protocol error (bad JSON / unknown protocol issues)
+- `4005` Auth timeout
+- `4006` Mission not found
+- `4007` Mission access denied
+- `1001` Server shutting down (graceful close)
+
+### Notification delivery model
+
+- All notifications are persisted in DB first, then pushed over WS.
+- Single-create notifications include real `data.id`.
+- Bulk notifications (from `createMany`) may send `data.id: ""` because DB does not return per-row IDs in that path.
+- Frontend should treat `referenceType + referenceId + type + createdAt` as fallback identity and can reconcile via REST `GET /notifications`.
+
+### Frontend implementation notes
+
+- Keep one authenticated WS connection per logged-in session.
+- Reconnect on socket close and re-send `AUTH`.
+- After reconnect, re-subscribe mission rooms currently open in UI.
+- For guaranteed state, use WS as real-time signal and REST as source of truth.
+
+---
+
 ## Rate Limiting
 
 UnityCare uses `express-rate-limit` with standard headers enabled.
@@ -47,6 +174,9 @@ UnityCare uses `express-rate-limit` with standard headers enabled.
 | `POST /incidents`                  | 1 hour     | 10    | userId |
 | `POST /incidents/:id/verification` | 1 hour     | 20    | userId |
 | `POST /applications`               | 1 hour     | 5     | userId |
+| `GET /dashboard/*`                 | 15 minutes | 30    | userId |
+| `GET /notifications*`              | 15 minutes | 120   | userId |
+| `POST /missions/:id/tracking`      | 15 minutes | 60    | userId |
 | `PATCH /account/password`          | 15 minutes | 10    | userId |
 | `PATCH /users/:id/password/reset`  | 15 minutes | 20    | userId |
 | `PATCH /users/:id/status`          | 15 minutes | 20    | userId |
@@ -788,6 +918,89 @@ No request body.
 
 ---
 
+## Reference Data (`/skills`, `/categories`, `/agencies`)
+
+All routes in this section require authentication.
+
+### Skills (`/skills`)
+
+| Method   | Endpoint      | Role                      | Description                                                 |
+| -------- | ------------- | ------------------------- | ----------------------------------------------------------- |
+| `GET`    | `/skills`     | Any authenticated user    | List skills (inactive hidden for non-admin)                 |
+| `GET`    | `/skills/:id` | Any authenticated user    | Get skill detail                                            |
+| `POST`   | `/skills`     | `SUPERADMIN`, `VOLUNTEER` | Create skill (`VOLUNTEER` must be `COORDINATOR`/`DIRECTOR`) |
+| `PATCH`  | `/skills/:id` | `SUPERADMIN`, `VOLUNTEER` | Update skill (`VOLUNTEER` cannot change `isActive`)         |
+| `DELETE` | `/skills/:id` | `SUPERADMIN`              | Delete skill (blocked when linked to volunteers)            |
+
+Notes:
+
+- For `VOLUNTEER` role, service-layer authority is enforced via `AgencyMember` and only `COORDINATOR` / `DIRECTOR` are allowed for write operations.
+- Name uniqueness is case-insensitive.
+
+### Categories (`/categories`)
+
+| Method   | Endpoint          | Role                      | Description                                                    |
+| -------- | ----------------- | ------------------------- | -------------------------------------------------------------- |
+| `GET`    | `/categories`     | Any authenticated user    | List incident categories (inactive hidden for non-admin)       |
+| `GET`    | `/categories/:id` | Any authenticated user    | Get category detail                                            |
+| `POST`   | `/categories`     | `SUPERADMIN`, `VOLUNTEER` | Create category (`VOLUNTEER` must be `COORDINATOR`/`DIRECTOR`) |
+| `PATCH`  | `/categories/:id` | `SUPERADMIN`, `VOLUNTEER` | Update category (`VOLUNTEER` cannot change `isActive`)         |
+| `DELETE` | `/categories/:id` | `SUPERADMIN`              | Delete category (blocked when linked to incidents)             |
+
+Notes:
+
+- For `VOLUNTEER` role, service-layer authority is enforced via `AgencyMember` and only `COORDINATOR` / `DIRECTOR` are allowed for write operations.
+- Name uniqueness is case-insensitive.
+
+### Agencies (`/agencies`)
+
+| Method   | Endpoint                                     | Role                               | Description                                                              |
+| -------- | -------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------ |
+| `GET`    | `/agencies`                                  | Any authenticated user             | List agencies (inactive hidden for non-admin)                            |
+| `GET`    | `/agencies/:id`                              | Any authenticated user             | Get agency detail                                                        |
+| `POST`   | `/agencies`                                  | `SUPERADMIN`                       | Create agency                                                            |
+| `PATCH`  | `/agencies/:id`                              | `SUPERADMIN`, `VOLUNTEER`          | Update agency (`VOLUNTEER`: own agency only, no `isActive` update)       |
+| `DELETE` | `/agencies/:id`                              | `SUPERADMIN`                       | Delete agency (blocked when linked to missions/applications)             |
+| `GET`    | `/agencies/:id/volunteers`                   | `SUPERADMIN`, `ADMIN`, `VOLUNTEER` | List available volunteers for mission assignment                         |
+| `PATCH`  | `/agencies/:id/volunteers/:volunteerId/role` | `SUPERADMIN`, `VOLUNTEER`          | Update volunteer agency role (`VOLUNTEER`: director of same agency only) |
+
+`GET /agencies/:id/volunteers` query params:
+
+| Param     | Type     | Required | Rules                    |
+| --------- | -------- | -------- | ------------------------ |
+| `search`  | `string` | ❌       | Filter by volunteer name |
+| `skillId` | `string` | ❌       | UUID skill filter        |
+| `page`    | `number` | ❌       | Default `1`              |
+| `perPage` | `number` | ❌       | Default `20`, max `100`  |
+
+Scope rules for `GET /agencies/:id/volunteers`:
+
+- `SUPERADMIN` / `ADMIN`: can query any `agencyId`.
+- `VOLUNTEER` must be `COORDINATOR` or `DIRECTOR` of an agency.
+- For `COORDINATOR` / `DIRECTOR`, provided `agencyId` must match their own agency; otherwise request is rejected with `FORBIDDEN`.
+
+### `PATCH /agencies/:id/volunteers/:volunteerId/role`
+
+Request body:
+
+| Field  | Type     | Required | Rules                                 |
+| ------ | -------- | -------- | ------------------------------------- |
+| `role` | `string` | ✅       | `MEMBER` · `COORDINATOR` · `DIRECTOR` |
+
+Access rules:
+
+- `SUPERADMIN`: can manage member roles in any agency.
+- `VOLUNTEER`: must be `DIRECTOR` of the same `agencyId`.
+- `COORDINATOR` is not allowed to update member roles.
+
+Safeguards:
+
+- Cannot change your own agency role.
+- Cannot demote/remove the last director in an agency.
+- Target user must already be a member of that agency.
+
+---
+
 ## Volunteer Profiles (`/volunteer-profiles`)
 
 > All `/volunteer-profiles` routes require `VOLUNTEER`.
@@ -841,6 +1054,9 @@ No request body.
 | `PATCH` | `/missions/:id/agency-decision`    | Any authenticated user             | Agency decision after rejection (authority checked in service) |
 | `PATCH` | `/missions/:id/confirm-completion` | Any authenticated user             | Confirm mission completion (authority checked in service)      |
 | `PATCH` | `/missions/:id/cancel`             | Any authenticated user             | Cancel mission (authority checked in service)                  |
+| `POST`  | `/missions/:id/tracking`           | `VOLUNTEER`                        | Push GPS point while mission is active                         |
+| `GET`   | `/missions/:id/tracking`           | `VOLUNTEER`, `ADMIN`, `SUPERADMIN` | Get mission tracking history                                   |
+| `GET`   | `/missions/:id/tracking/latest`    | `VOLUNTEER`, `ADMIN`, `SUPERADMIN` | Get latest point per assigned volunteer                        |
 
 ### `POST /missions`
 
@@ -958,6 +1174,157 @@ No request body.
 No request body.
 
 **Sample Response `200`**: mission accepted.
+
+### `POST /missions/:id/tracking`
+
+> Requires mission assignment and trackable mission status (`EN_ROUTE`, `ON_SITE`, `IN_PROGRESS`).
+> Service-level guard enforces one point per volunteer+mission every 15 seconds.
+
+| Field        | Type     | Required | Rules                                                     |
+| ------------ | -------- | -------- | --------------------------------------------------------- |
+| `latitude`   | `number` | ✅       | -90 to 90                                                 |
+| `longitude`  | `number` | ✅       | -180 to 180                                               |
+| `recordedAt` | `string` | ❌       | ISO datetime, within last 5 minutes and not in the future |
+
+**Sample Response `201`**: created tracking point.
+
+### `GET /missions/:id/tracking`
+
+| Param         | Type     | Required | Rules                             |
+| ------------- | -------- | -------- | --------------------------------- |
+| `volunteerId` | `string` | ❌       | UUID                              |
+| `since`       | `string` | ❌       | ISO datetime                      |
+| `limit`       | `number` | ❌       | Default `100`, min `1`, max `500` |
+
+**Sample Response `200`**: ordered tracking history.
+
+### `GET /missions/:id/tracking/latest`
+
+No request body.
+
+**Sample Response `200`**: latest GPS point per volunteer assigned to the mission.
+
+---
+
+## Notifications (`/notifications`)
+
+> All `/notifications` routes require authentication and are scoped to the authenticated user.
+
+| Method   | Endpoint                      | Role                   | Description                                           |
+| -------- | ----------------------------- | ---------------------- | ----------------------------------------------------- |
+| `GET`    | `/notifications`              | Any authenticated user | List own notifications with filters + pagination      |
+| `GET`    | `/notifications/unread-count` | Any authenticated user | Get unread badge count                                |
+| `PATCH`  | `/notifications/:id/read`     | Any authenticated user | Mark one notification as read                         |
+| `PATCH`  | `/notifications/read-all`     | Any authenticated user | Mark all unread notifications as read                 |
+| `DELETE` | `/notifications/:id`          | Any authenticated user | Delete one notification                               |
+| `DELETE` | `/notifications`              | Any authenticated user | Bulk delete (safe default keeps unread notifications) |
+
+### `GET /notifications`
+
+| Param        | Type     | Required | Rules                            |
+| ------------ | -------- | -------- | -------------------------------- |
+| `type`       | `string` | ❌       | Notification type enum           |
+| `unreadOnly` | `string` | ❌       | `"true"` or `"false"`            |
+| `page`       | `number` | ❌       | Default `1`                      |
+| `perPage`    | `number` | ❌       | Default `20`, min `1`, max `100` |
+
+Response includes paginated links (`self`, `next`, `prev`) and `unreadCount` in metadata.
+
+### `DELETE /notifications`
+
+| Param        | Type     | Required | Rules                                             |
+| ------------ | -------- | -------- | ------------------------------------------------- |
+| `keepUnread` | `string` | ❌       | `"true"` or `"false"`; default behavior is `true` |
+
+When `keepUnread` is omitted (or `true`), only read notifications are deleted.
+Pass `keepUnread=false` to delete both read and unread notifications.
+
+### Notification cleanup job
+
+Read notifications older than 90 days are removed automatically by a daily background cleanup job.
+
+---
+
+## Dashboard (`/dashboard`)
+
+All dashboard endpoints require authentication and are rate-limited (`30 req / 15 min / userId`).
+
+### Query parameters
+
+| Param      | Type            | Required | Allowed values                              | Default |
+| ---------- | --------------- | -------- | ------------------------------------------- | ------- |
+| `period`   | `string`        | ❌       | `7d`, `30d`, `90d`, `1y`, `all`             | `30d`   |
+| `agencyId` | `string` (UUID) | ❌       | Required for SUPERADMIN on agency endpoints | -       |
+
+Granularity mapping used by time-series responses:
+
+- `7d` / `30d` -> `day`
+- `90d` -> `week`
+- `1y` / `all` -> `month`
+
+### Endpoints
+
+#### Volunteer (role: `VOLUNTEER`)
+
+| Method | Endpoint                             | Description                                                                   |
+| ------ | ------------------------------------ | ----------------------------------------------------------------------------- |
+| `GET`  | `/dashboard/volunteer/summary`       | Personal KPI summary (missions, success rate, hours served, average duration) |
+| `GET`  | `/dashboard/volunteer/missions`      | Mission breakdown by type/priority with recent missions                       |
+| `GET`  | `/dashboard/volunteer/verifications` | Verification performance and recent verification activity                     |
+
+Notes:
+
+- Scope is always the authenticated volunteer (`req.user.sub`).
+- No `userId` query/body param is accepted.
+
+#### Agency (roles: `VOLUNTEER`, `SUPERADMIN`)
+
+| Method | Endpoint                         | Description                                                 |
+| ------ | -------------------------------- | ----------------------------------------------------------- |
+| `GET`  | `/dashboard/agency/live`         | Real-time operational snapshot (no `period`)                |
+| `GET`  | `/dashboard/agency/incidents`    | Incident funnel, average incident timings, and trend series |
+| `GET`  | `/dashboard/agency/missions`     | Mission funnel, response/duration metrics, and trend series |
+| `GET`  | `/dashboard/agency/volunteers`   | Workforce totals, top performers, dormant volunteers        |
+| `GET`  | `/dashboard/agency/categories`   | Incident category breakdown with outcome rates              |
+| `GET`  | `/dashboard/agency/applications` | Volunteer application pipeline metrics                      |
+
+Scope rules:
+
+- `VOLUNTEER` role is further validated via `AgencyMember` (`COORDINATOR`/`DIRECTOR`) in service layer.
+- `SUPERADMIN` must pass `agencyId` for agency dashboard endpoints.
+- `/dashboard/agency/applications` is restricted to `DIRECTOR` (within `VOLUNTEER`) or `SUPERADMIN`.
+
+#### Admin (roles: `ADMIN`, `SUPERADMIN`)
+
+| Method | Endpoint                        | Description                                       |
+| ------ | ------------------------------- | ------------------------------------------------- |
+| `GET`  | `/dashboard/admin/overview`     | Platform top-line KPIs with period deltas         |
+| `GET`  | `/dashboard/admin/retention`    | User retention/engagement metrics                 |
+| `GET`  | `/dashboard/admin/health`       | Platform health indicators and registration trend |
+| `GET`  | `/dashboard/admin/agencies`     | Cross-agency mission comparison                   |
+| `GET`  | `/dashboard/admin/applications` | Platform-wide application backlog                 |
+
+### Response shape
+
+Dashboard endpoints use the standard success envelope:
+
+```json
+{
+  "meta": {
+    "success": true,
+    "timestamp": "...",
+    "requestId": "...",
+    "rateLimit": {
+      "limit": 30,
+      "remaining": 29,
+      "reset": 840
+    }
+  },
+  "data": {
+    "period": "30d"
+  }
+}
+```
 
 ---
 

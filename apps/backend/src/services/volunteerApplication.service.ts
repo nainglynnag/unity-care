@@ -17,6 +17,7 @@ import {
   InvalidSkillIdsError,
 } from "../utils/errors";
 import { isSuperAdmin } from "../middlewares/auth.middleware";
+import { emitNotification, emitToMany } from "../utils/notificationEmitter";
 
 // Submit a new volunteer application
 export async function submitApplication(
@@ -100,6 +101,22 @@ export async function submitApplication(
 
     return app;
   });
+
+  // Notify agency coordinators/directors of the new application
+  const staffMembers = await prisma.agencyMember.findMany({
+    where: {
+      agencyId: data.agencyId,
+      role: { in: ["COORDINATOR", "DIRECTOR"] },
+    },
+    select: { userId: true },
+  });
+  emitToMany(
+    staffMembers.map((m) => m.userId),
+    "APPLICATION_SUBMITTED",
+    "New Volunteer Application",
+    `A new volunteer application has been submitted for ${agency.name}.`,
+    { type: "APPLICATION", id: application.id },
+  );
 
   return application;
 }
@@ -479,6 +496,16 @@ export async function startReview(
     },
   });
 
+  // Notify applicant that their application is being reviewed
+  emitNotification({
+    userId: application.userId,
+    type: "APPLICATION_REVIEWED",
+    title: "Application Under Review",
+    message: `Your volunteer application for ${updated.agency.name} is now being reviewed.`,
+    referenceType: "APPLICATION",
+    referenceId: applicationId,
+  });
+
   return updated;
 }
 
@@ -551,6 +578,16 @@ export async function reviewApplication(
       },
     });
 
+    // Notify applicant of rejection
+    emitNotification({
+      userId: application.userId,
+      type: "APPLICATION_REVIEWED",
+      title: "Application Rejected",
+      message: `Your volunteer application for ${application.agency.name} has been rejected.`,
+      referenceType: "APPLICATION",
+      referenceId: applicationId,
+    });
+
     return updated;
   }
 
@@ -616,6 +653,16 @@ export async function reviewApplication(
     });
 
     return approvedApp;
+  });
+
+  // Notify applicant of approval
+  emitNotification({
+    userId: application.userId,
+    type: "APPLICATION_REVIEWED",
+    title: "Application Approved",
+    message: `Your volunteer application for ${application.agency.name} has been approved! Welcome to the team.`,
+    referenceType: "APPLICATION",
+    referenceId: applicationId,
   });
 
   return updated;

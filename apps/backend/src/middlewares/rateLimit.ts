@@ -142,3 +142,36 @@ export const superAdminActionLimiter = createLimiter({
   keyGenerator: userKeyGenerator,
   message: "Too many administrative actions. Please wait 15 minutes.",
 });
+
+// Dashboard: insight queries
+// Dashboard endpoints run multiple DB queries (raw SQL, groupBy, Promise.all).
+// Per-user. 30 per 15 minutes — enough for page loads + period switching.
+export const dashboardLimiter = createLimiter({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  keyGenerator: userKeyGenerator,
+  message: "Too many dashboard requests. Please wait before refreshing again.",
+});
+
+// Notification polling: GET endpoints hit frequently by frontend.
+// A frontend polling unread-count every 15s + list every 30s uses ~90 req/15min.
+// Per-user. 120 per 15 minutes — generous headroom for polling.
+export const notificationPollLimiter = createLimiter({
+  windowMs: 15 * 60 * 1000,
+  limit: 120,
+  keyGenerator: userKeyGenerator,
+  message:
+    "Too many notification requests. Please reduce your polling frequency.",
+});
+
+// Mission tracking: GPS push.
+// HTTP-level guard against burst floods from a buggy client.
+// The service also enforces 15s per-volunteer-per-mission at the DB level.
+// 60 per 15 minutes per user = 4 per minute maximum at HTTP layer.
+// A well-behaved client pushes ~1 per 30s = 2 per minute.
+export const trackingPushLimiter = createLimiter({
+  windowMs: 15 * 60 * 1000,
+  limit: 60,
+  keyGenerator: userKeyGenerator,
+  message: "Too many GPS updates. Please reduce your update frequency.",
+});

@@ -789,6 +789,68 @@ No request body.
 
 ---
 
+## Reference Data (`/skills`, `/categories`, `/agencies`)
+
+All routes in this section require authentication.
+
+### Skills (`/skills`)
+
+| Method   | Endpoint      | Role                      | Description                                                 |
+| -------- | ------------- | ------------------------- | ----------------------------------------------------------- |
+| `GET`    | `/skills`     | Any authenticated user    | List skills (inactive hidden for non-admin)                 |
+| `GET`    | `/skills/:id` | Any authenticated user    | Get skill detail                                            |
+| `POST`   | `/skills`     | `SUPERADMIN`, `VOLUNTEER` | Create skill (`VOLUNTEER` must be `COORDINATOR`/`DIRECTOR`) |
+| `PATCH`  | `/skills/:id` | `SUPERADMIN`, `VOLUNTEER` | Update skill (`VOLUNTEER` cannot change `isActive`)         |
+| `DELETE` | `/skills/:id` | `SUPERADMIN`              | Delete skill (blocked when linked to volunteers)            |
+
+Notes:
+
+- For `VOLUNTEER` role, service-layer authority is enforced via `AgencyMember` and only `COORDINATOR` / `DIRECTOR` are allowed for write operations.
+- Name uniqueness is case-insensitive.
+
+### Categories (`/categories`)
+
+| Method   | Endpoint          | Role                      | Description                                                    |
+| -------- | ----------------- | ------------------------- | -------------------------------------------------------------- |
+| `GET`    | `/categories`     | Any authenticated user    | List incident categories (inactive hidden for non-admin)       |
+| `GET`    | `/categories/:id` | Any authenticated user    | Get category detail                                            |
+| `POST`   | `/categories`     | `SUPERADMIN`, `VOLUNTEER` | Create category (`VOLUNTEER` must be `COORDINATOR`/`DIRECTOR`) |
+| `PATCH`  | `/categories/:id` | `SUPERADMIN`, `VOLUNTEER` | Update category (`VOLUNTEER` cannot change `isActive`)         |
+| `DELETE` | `/categories/:id` | `SUPERADMIN`              | Delete category (blocked when linked to incidents)             |
+
+Notes:
+
+- For `VOLUNTEER` role, service-layer authority is enforced via `AgencyMember` and only `COORDINATOR` / `DIRECTOR` are allowed for write operations.
+- Name uniqueness is case-insensitive.
+
+### Agencies (`/agencies`)
+
+| Method   | Endpoint                   | Role                               | Description                                                        |
+| -------- | -------------------------- | ---------------------------------- | ------------------------------------------------------------------ |
+| `GET`    | `/agencies`                | Any authenticated user             | List agencies (inactive hidden for non-admin)                      |
+| `GET`    | `/agencies/:id`            | Any authenticated user             | Get agency detail                                                  |
+| `POST`   | `/agencies`                | `SUPERADMIN`                       | Create agency                                                      |
+| `PATCH`  | `/agencies/:id`            | `SUPERADMIN`, `VOLUNTEER`          | Update agency (`VOLUNTEER`: own agency only, no `isActive` update) |
+| `DELETE` | `/agencies/:id`            | `SUPERADMIN`                       | Delete agency (blocked when linked to missions/applications)       |
+| `GET`    | `/agencies/:id/volunteers` | `SUPERADMIN`, `ADMIN`, `VOLUNTEER` | List available volunteers for mission assignment                   |
+
+`GET /agencies/:id/volunteers` query params:
+
+| Param     | Type     | Required | Rules                    |
+| --------- | -------- | -------- | ------------------------ |
+| `search`  | `string` | ❌       | Filter by volunteer name |
+| `skillId` | `string` | ❌       | UUID skill filter        |
+| `page`    | `number` | ❌       | Default `1`              |
+| `perPage` | `number` | ❌       | Default `20`, max `100`  |
+
+Scope rules for `GET /agencies/:id/volunteers`:
+
+- `SUPERADMIN` / `ADMIN`: can query any `agencyId`.
+- `VOLUNTEER` must be `COORDINATOR` or `DIRECTOR` of an agency.
+- For `COORDINATOR` / `DIRECTOR`, provided `agencyId` must match their own agency; otherwise request is rejected with `FORBIDDEN`.
+
+---
+
 ## Volunteer Profiles (`/volunteer-profiles`)
 
 > All `/volunteer-profiles` routes require `VOLUNTEER`.

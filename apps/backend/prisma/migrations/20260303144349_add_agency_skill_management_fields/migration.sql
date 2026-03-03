@@ -1,0 +1,10 @@
+-- Agency: add description, isActive, updatedAt
+ALTER TABLE "Agency" ADD COLUMN "description" TEXT;
+ALTER TABLE "Agency" ADD COLUMN "isActive" BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "Agency" ADD COLUMN "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
+-- Skill: add description, isActive, createdAt, updatedAt
+ALTER TABLE "Skill" ADD COLUMN "description" TEXT;
+ALTER TABLE "Skill" ADD COLUMN "isActive" BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "Skill" ADD COLUMN "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE "Skill" ADD COLUMN "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;

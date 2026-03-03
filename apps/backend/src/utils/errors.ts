@@ -521,3 +521,57 @@ export class CannotDeleteVolunteerOnMissionError extends AppError {
     );
   }
 }
+
+// Reference Data (Skills / Categories / Agencies)
+
+export class SkillNotFoundError extends AppError {
+  constructor() {
+    super("SKILL_NOT_FOUND", "The requested skill could not be found.", 404);
+  }
+}
+
+export class SkillNameConflictError extends AppError {
+  constructor() {
+    super("SKILL_NAME_CONFLICT", "A skill with this name already exists.", 409);
+  }
+}
+
+export class CategoryNameConflictError extends AppError {
+  constructor() {
+    super(
+      "CATEGORY_NAME_CONFLICT",
+      "A category with this name already exists.",
+      409,
+    );
+  }
+}
+
+export class AgencyNameConflictError extends AppError {
+  constructor() {
+    super(
+      "AGENCY_NAME_CONFLICT",
+      "An agency with this name already exists.",
+      409,
+    );
+  }
+}
+
+export class CannotDeactivateWithActiveDataError extends AppError {
+  constructor(entity: "skill" | "category" | "agency") {
+    super(
+      "CANNOT_DEACTIVATE_WITH_ACTIVE_DATA",
+      `This ${entity} cannot be deactivated because it has active records linked to it.`,
+      400,
+    );
+  }
+}
+
+export class CannotDeleteWithLinkedDataError extends AppError {
+  constructor(entity: "skill" | "category" | "agency") {
+    super(
+      "CANNOT_DELETE_WITH_LINKED_DATA",
+      `This ${entity} cannot be deleted because it has records linked to it. Consider deactivating instead.`,
+      400,
+    );
+  }
+}

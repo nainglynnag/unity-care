@@ -1,5 +1,6 @@
 import { prisma } from "../lib/prisma";
 import type { NotificationType } from "../../generated/prisma/client";
+import { broadcastNotification } from "../ws/broadcast";
 
 // Fire-and-forget notification creator.
 // Call this from any service when an event occurs. The function
@@ -17,7 +18,7 @@ interface EmitOptions {
 
 export async function emitNotification(opts: EmitOptions): Promise<void> {
   try {
-    await prisma.notification.create({
+    const notification = await prisma.notification.create({
       data: {
         userId: opts.userId,
         type: opts.type,
@@ -26,6 +27,17 @@ export async function emitNotification(opts: EmitOptions): Promise<void> {
         referenceType: opts.referenceType ?? null,
         referenceId: opts.referenceId ?? null,
       },
+    });
+
+    broadcastNotification(opts.userId, {
+      id: notification.id,
+      type: notification.type,
+      title: notification.title,
+      message: notification.message,
+      referenceType: notification.referenceType,
+      referenceId: notification.referenceId,
+      isRead: notification.isRead,
+      createdAt: notification.createdAt,
     });
   } catch (err) {
     console.error("[notification-emitter] Failed to create notification:", err);
@@ -53,6 +65,19 @@ export async function emitToMany(
         referenceId: ref?.id ?? null,
       })),
     });
+
+    for (const userId of userIds) {
+      broadcastNotification(userId, {
+        id: "",
+        type,
+        title,
+        message,
+        referenceType: ref?.type ?? null,
+        referenceId: ref?.id ?? null,
+        isRead: false,
+        createdAt: new Date(),
+      });
+    }
   } catch (err) {
     console.error(
       "[notification-emitter] Failed to create bulk notifications:",

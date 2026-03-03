@@ -11,6 +11,7 @@ import type {
   PushTrackingInput,
   GetTrackingQuery,
 } from "../validators/tracking.validator";
+import { broadcastTrackingUpdate } from "../ws/broadcast";
 
 // Statuses where GPS tracking pushes are accepted.
 // ACCEPTED is excluded — volunteer hasn't started moving yet.
@@ -93,6 +94,15 @@ export async function pushTracking(
       lastKnownLatitude: data.latitude,
       lastKnownLongitude: data.longitude,
     },
+  });
+
+  // WS broadcast — push tracking update to all mission room subscribers.
+  // Called after DB write succeeds so we never broadcast unpersisted data.
+  broadcastTrackingUpdate(missionId, {
+    volunteerId,
+    latitude: data.latitude,
+    longitude: data.longitude,
+    recordedAt: data.recordedAt,
   });
 
   return point;

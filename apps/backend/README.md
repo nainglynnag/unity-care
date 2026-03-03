@@ -31,6 +31,133 @@ If no limiter headers are present for a response, `meta.rateLimit` is `null`.
 
 ---
 
+## WebSocket Integration (Frontend)
+
+This backend branch supports real-time events over WebSocket for:
+
+- user notifications
+- mission live tracking updates
+- mission terminal-state broadcast (`MISSION_CLOSED`)
+
+### Endpoint
+
+- Local: `ws://localhost:3000/ws`
+- Uses the same server as HTTP API (upgrade on `/ws` path)
+
+### Authentication flow (required)
+
+Connection is accepted first, then authenticated (Option B).
+
+1. Connect to `/ws`
+2. Within 5 seconds, send:
+
+```json
+{ "type": "AUTH", "token": "<accessToken>" }
+```
+
+3. On success, server replies:
+
+```json
+{ "type": "AUTH_SUCCESS", "userId": "<uuid>", "role": "VOLUNTEER" }
+```
+
+If auth is missing/invalid:
+
+- `4005` auth timeout (no AUTH in time)
+- `4001` invalid token
+- `4003` expired token
+
+### Client -> Server messages
+
+```json
+{ "type": "AUTH", "token": "<jwt>" }
+{ "type": "SUBSCRIBE_MISSION", "missionId": "<uuid>" }
+{ "type": "UNSUBSCRIBE_MISSION", "missionId": "<uuid>" }
+{ "type": "PING" }
+```
+
+### Server -> Client messages
+
+```json
+{ "type": "AUTH_SUCCESS", "userId": "<uuid>", "role": "VOLUNTEER" }
+{ "type": "SUBSCRIBED", "missionId": "<uuid>" }
+{ "type": "UNSUBSCRIBED", "missionId": "<uuid>" }
+{ "type": "PONG" }
+{ "type": "ERROR", "code": 4007, "message": "Mission access denied." }
+{ "type": "MISSION_CLOSED", "missionId": "<uuid>" }
+```
+
+Notification event:
+
+```json
+{
+  "type": "NOTIFICATION",
+  "data": {
+    "id": "<uuid-or-empty>",
+    "type": "INCIDENT_CREATED",
+    "title": "...",
+    "message": "...",
+    "referenceType": "INCIDENT",
+    "referenceId": "<uuid>",
+    "isRead": false,
+    "createdAt": "2026-03-03T12:00:00.000Z"
+  }
+}
+```
+
+Tracking event:
+
+```json
+{
+  "type": "TRACKING_UPDATE",
+  "data": {
+    "volunteerId": "<uuid>",
+    "latitude": 13.7563,
+    "longitude": 100.5018,
+    "recordedAt": "2026-03-03T12:00:00.000Z"
+  }
+}
+```
+
+### Mission subscription access rules
+
+`SUBSCRIBE_MISSION` is allowed for:
+
+- `ADMIN`, `SUPERADMIN`: any mission
+- `VOLUNTEER`: assigned volunteer OR agency `COORDINATOR`/`DIRECTOR`
+
+Denied:
+
+- `CIVILIAN` always denied (`ERROR` code `4007`)
+- unknown mission (`ERROR` code `4006`)
+
+### Close / error codes used
+
+- `4001` Unauthorized (invalid token or unauthenticated flow)
+- `4002` Forbidden (role not allowed)
+- `4003` Token expired
+- `4004` Protocol error (bad JSON / unknown protocol issues)
+- `4005` Auth timeout
+- `4006` Mission not found
+- `4007` Mission access denied
+- `1001` Server shutting down (graceful close)
+
+### Notification delivery model
+
+- All notifications are persisted in DB first, then pushed over WS.
+- Single-create notifications include real `data.id`.
+- Bulk notifications (from `createMany`) may send `data.id: ""` because DB does not return per-row IDs in that path.
+- Frontend should treat `referenceType + referenceId + type + createdAt` as fallback identity and can reconcile via REST `GET /notifications`.
+
+### Frontend implementation notes
+
+- Keep one authenticated WS connection per logged-in session.
+- Reconnect on socket close and re-send `AUTH`.
+- After reconnect, re-subscribe mission rooms currently open in UI.
+- For guaranteed state, use WS as real-time signal and REST as source of truth.
+
+---
+
 ## Rate Limiting
 
 UnityCare uses `express-rate-limit` with standard headers enabled.

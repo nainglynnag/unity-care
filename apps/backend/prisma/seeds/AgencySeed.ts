@@ -1,124 +1,112 @@
-import "dotenv/config";
-import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient, AgencyRole } from "../../generated/prisma/client";
+import { AgencyRole, ApplicationStatus } from "../../generated/prisma/client";
 import { faker } from "@faker-js/faker";
-
-const adapter = new PrismaPg({
-  connectionString: `${process.env.DATABASE_URL}`,
-});
-const prisma = new PrismaClient({ adapter });
+import { seedPrisma as prisma } from "./client";
+import type { UserSeedResult } from "./UserSeed";
 
 faker.seed(13579);
 
-export async function agencySeed() {
-  console.log("Seeding agencies is starting...");
+const THAI_AGENCIES = [
+  {
+    name: "Bangkok Emergency Response Unit",
+    description:
+      "Central Bangkok rapid response team covering the metropolitan area.",
+    lat: 13.7563,
+    lng: 100.5018,
+    region: "Bangkok Metropolitan",
+  },
+  {
+    name: "Northern Rescue Foundation",
+    description:
+      "Search and rescue operations across Northern Thailand highlands.",
+    lat: 18.7883,
+    lng: 98.9853,
+    region: "Northern Thailand",
+  },
+  {
+    name: "Southern Maritime Safety Corps",
+    description:
+      "Coastal and maritime emergency response for southern provinces.",
+    lat: 7.8804,
+    lng: 98.3923,
+    region: "Southern Thailand",
+  },
+];
 
-  // Create agencies
-  const agencyCount = 3;
-  const agencies = [];
+export interface AgencySeedResult {
+  agencies: Array<{ id: string; name: string }>;
+  volunteerAgencyMap: Map<string, string>;
+}
 
-  for (let i = 0; i < agencyCount; i++) {
+export async function agencySeed(
+  users: UserSeedResult,
+): Promise<AgencySeedResult> {
+  console.log("Seeding agencies...");
+
+  const agencies: Array<{ id: string; name: string }> = [];
+  const volunteerAgencyMap = new Map<string, string>();
+
+  const volunteers = users.volunteers;
+  const reviewer = users.admins[0]!;
+
+  // Split 20 volunteers across 3 agencies: 8, 6, 6
+  const volunteerSlices = [
+    volunteers.slice(0, 8),
+    volunteers.slice(8, 14),
+    volunteers.slice(14, 20),
+  ];
+
+  for (let a = 0; a < THAI_AGENCIES.length; a++) {
+    const def = THAI_AGENCIES[a]!;
     const agency = await prisma.agency.create({
       data: {
-        name: faker.company.name() + " Response Unit",
-        latitude: faker.location.latitude(),
-        longitude: faker.location.longitude(),
-        region: faker.location.city(),
+        name: def.name,
+        description: def.description,
+        latitude: def.lat,
+        longitude: def.lng,
+        region: def.region,
       },
     });
     agencies.push(agency);
-  }
 
-  console.log(`Created ${agencies.length} agencies.`);
+    const slice = volunteerSlices[a]!;
+    for (let i = 0; i < slice.length; i++) {
+      const vol = slice[i]!;
 
-  // Get volunteers
-  const volunteers = await prisma.user.findMany({
-    where: {
-      roles: { some: { role: { name: "VOLUNTEER" } } },
-    },
-  });
-
-  if (volunteers.length === 0) {
-    console.log("No volunteers found. Please seed users first.");
-    return;
-  }
-
-  // Get an admin/reviewer to associate with re-created applications
-  const reviewer = await prisma.user.findFirst({
-    where: { roles: { some: { role: { name: "ADMIN" } } } },
-  });
-
-  if (!reviewer) {
-    console.log("No admin user found. Please seed users first.");
-    return;
-  }
-
-  // Assign volunteers to agencies
-  for (const agency of agencies) {
-    const memberCount = faker.number.int({ min: 4, max: 8 });
-    const shuffledVolunteers = faker.helpers.shuffle([...volunteers]);
-
-    for (let i = 0; i < memberCount && i < shuffledVolunteers.length; i++) {
-      const volunteer = shuffledVolunteers[i];
-      if (!volunteer) continue;
-
-      // AgencyMember composite PK is (agencyId, userId) — skip if already exists
-      const existing = await prisma.agencyMember.findUnique({
-        where: {
-          agencyId_userId: { agencyId: agency.id, userId: volunteer.id },
-        },
-      });
-      if (existing) continue;
+      // First volunteer → DIRECTOR, next two → COORDINATOR, rest → MEMBER
+      let role: AgencyRole;
+      if (i === 0) role = AgencyRole.DIRECTOR;
+      else if (i <= 2) role = AgencyRole.COORDINATOR;
+      else role = AgencyRole.MEMBER;
 
       await prisma.agencyMember.create({
         data: {
           agencyId: agency.id,
-          userId: volunteer.id,
-          role: i === 0 ? AgencyRole.COORDINATOR : AgencyRole.MEMBER,
+          userId: vol.id,
+          role,
         },
       });
 
-      const existingApp = await prisma.volunteerApplication.findFirst({
-        where: { userId: volunteer.id, agencyId: agency.id },
+      // Approved application for each member
+      await prisma.volunteerApplication.create({
+        data: {
+          userId: vol.id,
+          agencyId: agency.id,
+          status: ApplicationStatus.APPROVED,
+          reviewedBy: reviewer.id,
+          reviewNote: "Approved during agency onboarding.",
+          consentGiven: true,
+          consentGivenAt: faker.date.past({ years: 1 }),
+          submittedAt: faker.date.past({ years: 1 }),
+          reviewedAt: faker.date.recent({ days: 180 }),
+        },
       });
 
-      if (!existingApp) {
-        // Check if volunteer has the placeholder agency application and update it
-        const placeholderApp = await prisma.volunteerApplication.findFirst({
-          where: { userId: volunteer.id, agencyId: "placeholder-agency" },
-        });
-
-        if (placeholderApp) {
-          await prisma.volunteerApplication.update({
-            where: { id: placeholderApp.id },
-            data: { agencyId: agency.id },
-          });
-        } else {
-          await prisma.volunteerApplication.create({
-            data: {
-              userId: volunteer.id,
-              agencyId: agency.id,
-              status: "APPROVED",
-              reviewedBy: reviewer.id,
-              reviewNote: "Approved during agency assignment.",
-              submittedAt: faker.date.past(),
-              reviewedAt: new Date(),
-            },
-          });
-        }
-      }
+      volunteerAgencyMap.set(vol.id, agency.id);
     }
   }
 
-  // ── Clean up placeholder agency if all its applications were migrated ──
-  const remainingPlaceholderApps = await prisma.volunteerApplication.count({
-    where: { agencyId: "placeholder-agency" },
-  });
-
-  if (remainingPlaceholderApps === 0) {
-    await prisma.agency.delete({ where: { id: "placeholder-agency" } });
-    console.log("Placeholder agency removed.");
-  }
-
-  console.log("Agency seeding successfully completed.");
+  console.log(
+    `  Created ${agencies.length} agencies with ${volunteers.length} members total.`,
+  );
+  return { agencies, volunteerAgencyMap };
 }

@@ -1,27 +1,21 @@
 import "dotenv/config";
-import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "../generated/prisma/client";
+import { seedPrisma } from "./seeds/client";
 import { userSeed } from "./seeds/UserSeed";
+import { agencySeed } from "./seeds/AgencySeed";
 import { incidentSeed } from "./seeds/IncidentSeed";
 import { missionSeed } from "./seeds/missionSeed";
 import { notificationSeed } from "./seeds/notificationSeed";
 import { auditLogSeed } from "./seeds/AuditLogSeed";
-import { agencySeed } from "./seeds/AgencySeed";
-
-const adapter = new PrismaPg({
-  connectionString: `${process.env.DATABASE_URL}`,
-});
-const prisma = new PrismaClient({ adapter });
 
 async function main() {
   console.log("Starting full database seed...\n");
 
-  await userSeed();
-  await agencySeed();
-  await incidentSeed();
-  await missionSeed();
-  await notificationSeed();
-  await auditLogSeed();
+  const users = await userSeed();
+  const agencies = await agencySeed(users);
+  const incidents = await incidentSeed(users);
+  const missions = await missionSeed(users, agencies, incidents);
+  await notificationSeed(users, incidents, missions);
+  await auditLogSeed(users, incidents, missions);
 
   console.log("\nAll seeds completed successfully.");
 }
@@ -32,5 +26,5 @@ main()
     process.exit(1);
   })
   .finally(async () => {
-    await prisma.$disconnect();
+    await seedPrisma.$disconnect();
   });

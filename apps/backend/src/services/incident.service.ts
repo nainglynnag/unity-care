@@ -9,6 +9,7 @@ import {
   ForbiddenError,
 } from "../utils/errors";
 import { isSuperAdmin } from "../middlewares/auth.middleware";
+import { emitNotification, emitToMany } from "../utils/notificationEmitter";
 import type {
   CreateIncidentInput,
   ListMyIncidentQuery,
@@ -179,6 +180,32 @@ export async function createIncident(
       },
     });
   });
+
+  // Notify reporter that their SOS was received
+  emitNotification({
+    userId: reportedBy,
+    type: "INCIDENT_CREATED",
+    title: "Incident Reported",
+    message: `Your incident "${incident.title}" has been received and is being processed.`,
+    referenceType: "INCIDENT",
+    referenceId: incident.id,
+  });
+
+  // Notify all ADMIN/SUPERADMIN users of the new incident
+  const admins = await prisma.userRole.findMany({
+    where: { role: { name: { in: ["ADMIN", "SUPERADMIN"] } } },
+    select: { userId: true },
+  });
+  const adminIds = admins
+    .map((a) => a.userId)
+    .filter((id) => id !== reportedBy);
+  emitToMany(
+    adminIds,
+    "INCIDENT_CREATED",
+    "New Incident Reported",
+    `A new incident "${incident.title}" has been reported on the platform.`,
+    { type: "INCIDENT", id: incident.id },
+  );
 
   return { incident, emergencyProfile };
 }
@@ -748,10 +775,24 @@ export async function updateIncidentStatus(
 
   validateStatusTransition(incident.status, newStatus);
 
-  return prisma.incident.update({
+  const updated = await prisma.incident.update({
     where: { id: incidentId },
     data: { status: newStatus },
   });
+
+  // Notify the reporter of status change (if reporter exists)
+  if (incident.reportedBy) {
+    emitNotification({
+      userId: incident.reportedBy,
+      type: "INCIDENT_STATUS_UPDATED",
+      title: "Incident Status Updated",
+      message: `Your incident status has been updated to ${newStatus}.`,
+      referenceType: "INCIDENT",
+      referenceId: incidentId,
+    });
+  }
+
+  return updated;
 }
 
 // Prevents jumping status e.g. REPORTED directly to RESOLVED.

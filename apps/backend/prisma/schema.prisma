@@ -379,6 +379,7 @@ model MissionTracking {
   volunteer User    @relation(fields: [volunteerId], references: [id])
 
   @@index([missionId])
+  @@index([missionId, volunteerId, recordedAt])
 }
 
 model MissionLog {

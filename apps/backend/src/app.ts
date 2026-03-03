@@ -11,6 +11,9 @@ import missionRoutes from "./routes/mission.routes";
 import accountRoutes from "./routes/account.routes";
 import userRoutes from "./routes/users.routes";
 import dashboardRoutes from "./routes/dashboard.routes";
+import skillRoutes from "./routes/skill.routes";
+import categoryRoutes from "./routes/category.routes";
+import agencyRoutes from "./routes/agency.routes";
 import { errorHandler } from "./middlewares/error.middleware";
 import { globalLimiter } from "./middlewares/rateLimit";
 import { scheduleTokenCleanup } from "./jobs/tokenCleanup";
@@ -38,6 +41,9 @@ app.use("/api/v1/missions", missionRoutes);
 app.use("/api/v1/account", accountRoutes);
 app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/dashboard", dashboardRoutes);
+app.use("/api/v1/skills", skillRoutes);
+app.use("/api/v1/categories", categoryRoutes);
+app.use("/api/v1/agencies", agencyRoutes);
 
 app.use(errorHandler);
 

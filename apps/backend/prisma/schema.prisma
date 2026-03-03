@@ -123,12 +123,15 @@ model EmergencyContact {
 
 // Agency or Command Center
 model Agency {
-  id        String   @id @default(uuid())
-  name      String
-  latitude  Float
-  longitude Float
-  region    String?
-  createdAt DateTime @default(now())
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  latitude    Float
+  longitude   Float
+  region      String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   members      AgencyMember[]
   missions     Mission[]
@@ -161,8 +164,12 @@ model VolunteerProfile {
 }
 
 model Skill {
-  id   String @id @default(uuid())
-  name String @unique
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   volunteers VolunteerSkill[]
 }

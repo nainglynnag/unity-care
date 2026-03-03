@@ -892,7 +892,7 @@ export async function confirmCompletion(
 
       const updated = await tx.mission.update({
         where: { id: missionId },
-        data: { status: MissionStatus.CLOSED },
+        data: { status: MissionStatus.CLOSED, closedAt: new Date() },
       });
 
       await tx.missionLog.create({

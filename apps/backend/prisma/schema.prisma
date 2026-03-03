@@ -310,6 +310,7 @@ model Mission {
   acceptedAt  DateTime?
   onSiteAt    DateTime?
   completedAt DateTime?
+  closedAt    DateTime?
 
   primaryIncidentId String
   createdBy         String?

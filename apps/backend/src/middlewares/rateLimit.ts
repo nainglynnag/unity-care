@@ -142,3 +142,13 @@ export const superAdminActionLimiter = createLimiter({
   keyGenerator: userKeyGenerator,
   message: "Too many administrative actions. Please wait 15 minutes.",
 });
+
+// Dashboard: insight queries
+// Dashboard endpoints run multiple DB queries (raw SQL, groupBy, Promise.all).
+// Per-user. 30 per 15 minutes — enough for page loads + period switching.
+export const dashboardLimiter = createLimiter({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  keyGenerator: userKeyGenerator,
+  message: "Too many dashboard requests. Please wait before refreshing again.",
+});

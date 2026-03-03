@@ -827,14 +827,15 @@ Notes:
 
 ### Agencies (`/agencies`)
 
-| Method   | Endpoint                   | Role                               | Description                                                        |
-| -------- | -------------------------- | ---------------------------------- | ------------------------------------------------------------------ |
-| `GET`    | `/agencies`                | Any authenticated user             | List agencies (inactive hidden for non-admin)                      |
-| `GET`    | `/agencies/:id`            | Any authenticated user             | Get agency detail                                                  |
-| `POST`   | `/agencies`                | `SUPERADMIN`                       | Create agency                                                      |
-| `PATCH`  | `/agencies/:id`            | `SUPERADMIN`, `VOLUNTEER`          | Update agency (`VOLUNTEER`: own agency only, no `isActive` update) |
-| `DELETE` | `/agencies/:id`            | `SUPERADMIN`                       | Delete agency (blocked when linked to missions/applications)       |
-| `GET`    | `/agencies/:id/volunteers` | `SUPERADMIN`, `ADMIN`, `VOLUNTEER` | List available volunteers for mission assignment                   |
+| Method   | Endpoint                                     | Role                               | Description                                                              |
+| -------- | -------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------ |
+| `GET`    | `/agencies`                                  | Any authenticated user             | List agencies (inactive hidden for non-admin)                            |
+| `GET`    | `/agencies/:id`                              | Any authenticated user             | Get agency detail                                                        |
+| `POST`   | `/agencies`                                  | `SUPERADMIN`                       | Create agency                                                            |
+| `PATCH`  | `/agencies/:id`                              | `SUPERADMIN`, `VOLUNTEER`          | Update agency (`VOLUNTEER`: own agency only, no `isActive` update)       |
+| `DELETE` | `/agencies/:id`                              | `SUPERADMIN`                       | Delete agency (blocked when linked to missions/applications)             |
+| `GET`    | `/agencies/:id/volunteers`                   | `SUPERADMIN`, `ADMIN`, `VOLUNTEER` | List available volunteers for mission assignment                         |
+| `PATCH`  | `/agencies/:id/volunteers/:volunteerId/role` | `SUPERADMIN`, `VOLUNTEER`          | Update volunteer agency role (`VOLUNTEER`: director of same agency only) |
 
 `GET /agencies/:id/volunteers` query params:
 
@@ -850,6 +851,26 @@ Scope rules for `GET /agencies/:id/volunteers`:
 - `SUPERADMIN` / `ADMIN`: can query any `agencyId`.
 - `VOLUNTEER` must be `COORDINATOR` or `DIRECTOR` of an agency.
 - For `COORDINATOR` / `DIRECTOR`, provided `agencyId` must match their own agency; otherwise request is rejected with `FORBIDDEN`.
+
+### `PATCH /agencies/:id/volunteers/:volunteerId/role`
+
+Request body:
+
+| Field  | Type     | Required | Rules                                 |
+| ------ | -------- | -------- | ------------------------------------- |
+| `role` | `string` | ✅       | `MEMBER` · `COORDINATOR` · `DIRECTOR` |
+
+Access rules:
+
+- `SUPERADMIN`: can manage member roles in any agency.
+- `VOLUNTEER`: must be `DIRECTOR` of the same `agencyId`.
+- `COORDINATOR` is not allowed to update member roles.
+
+Safeguards:
+
+- Cannot change your own agency role.
+- Cannot demote/remove the last director in an agency.
+- Target user must already be a member of that agency.
 
 ---
 

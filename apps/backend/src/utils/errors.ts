@@ -575,3 +575,43 @@ export class CannotDeleteWithLinkedDataError extends AppError {
     );
   }
 }
+
+// Notifications
+
+export class NotificationNotFoundError extends AppError {
+  constructor() {
+    super("NOTIFICATION_NOT_FOUND", "Notification not found.", 404);
+  }
+}
+
+// Mission Tracking
+
+export class NotAssignedToMissionError extends AppError {
+  constructor() {
+    super(
+      "NOT_ASSIGNED_TO_MISSION",
+      "You are not currently assigned to this mission.",
+      403,
+    );
+  }
+}
+
+export class TrackingNotAllowedError extends AppError {
+  constructor() {
+    super(
+      "TRACKING_NOT_ALLOWED",
+      "GPS tracking can only be submitted while the mission is EN_ROUTE or ON_SITE.",
+      400,
+    );
+  }
+}
+
+export class TrackingRateLimitError extends AppError {
+  constructor() {
+    super(
+      "TRACKING_RATE_LIMIT",
+      "GPS update submitted too recently. Please wait at least 15 seconds between updates.",
+      429,
+    );
+  }
+}

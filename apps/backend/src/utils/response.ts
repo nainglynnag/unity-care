@@ -48,6 +48,7 @@ export function paginatedResponse(
     perPage: number;
   },
   links: Record<string, string>,
+  extra?: Record<string, unknown>,
   statusCode = 200,
 ) {
   return res.status(statusCode).json({
@@ -57,6 +58,7 @@ export function paginatedResponse(
     },
     data,
     links,
+    ...(extra && extra),
   });
 }
 

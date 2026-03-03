@@ -1,6 +1,8 @@
 import { Router } from "express";
 import * as missionController from "../controllers/mission.controller";
+import * as trackingController from "../controllers/tracking.controller";
 import { authenticate, requireRoles } from "../middlewares/auth.middleware";
+import { trackingPushLimiter } from "../middlewares/rateLimit";
 import type { MissionParams } from "../controllers/mission.controller";
 
 const router = Router();
@@ -22,6 +24,30 @@ router.get(
   "/assigned",
   requireRoles("VOLUNTEER"),
   missionController.listMyMissions,
+);
+
+// GPS Tracking routes (must be before /:id catch-all)
+
+// POST /missions/:id/tracking — volunteer pushes GPS position
+router.post<MissionParams>(
+  "/:id/tracking",
+  requireRoles("VOLUNTEER"),
+  trackingPushLimiter,
+  trackingController.pushTracking,
+);
+
+// GET /missions/:id/tracking/latest — most recent point per volunteer (live map)
+router.get<MissionParams>(
+  "/:id/tracking/latest",
+  requireRoles("VOLUNTEER", "ADMIN", "SUPERADMIN"),
+  trackingController.getLatestTracking,
+);
+
+// GET /missions/:id/tracking — full history with filters
+router.get<MissionParams>(
+  "/:id/tracking",
+  requireRoles("VOLUNTEER", "ADMIN", "SUPERADMIN"),
+  trackingController.getTrackingHistory,
 );
 
 // GET    /missions/:id — full mission detail (scoped by role in service)

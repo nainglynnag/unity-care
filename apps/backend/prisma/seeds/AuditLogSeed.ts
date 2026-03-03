@@ -1,68 +1,152 @@
-import "dotenv/config";
-import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "../../generated/prisma/client";
 import { faker } from "@faker-js/faker";
-
-const adapter = new PrismaPg({
-  connectionString: `${process.env.DATABASE_URL}`,
-});
-const prisma = new PrismaClient({ adapter });
+import { seedPrisma as prisma } from "./client";
+import type { UserSeedResult } from "./UserSeed";
+import type { IncidentSeedResult } from "./IncidentSeed";
+import type { MissionSeedResult } from "./missionSeed";
 
 faker.seed(88888);
 
-export async function auditLogSeed() {
-  console.log("Seeding audit logs is starting...");
+export async function auditLogSeed(
+  users: UserSeedResult,
+  incidentResult: IncidentSeedResult,
+  missionResult: MissionSeedResult,
+): Promise<void> {
+  console.log("Seeding audit logs...");
 
-  const users = await prisma.user.findMany();
-  const incidents = await prisma.incident.findMany();
-  const missions = await prisma.mission.findMany();
+  let count = 0;
 
-  if (users.length === 0) {
-    console.log("No users found. Please seed users first!");
-    return;
-  }
-
-  for (let i = 0; i < 50; i++) {
-    const actor = faker.helpers.arrayElement(users);
-
-    const entityType = faker.helpers.arrayElement([
-      "USER",
-      "INCIDENT",
-      "MISSION",
-    ]);
-
-    let entityId: string | null = null;
-    if (entityType === "USER") {
-      entityId = faker.helpers.arrayElement(users).id;
-    }
-    if (entityType === "INCIDENT" && incidents.length > 0) {
-      entityId = faker.helpers.arrayElement(incidents).id;
-    }
-    if (entityType === "MISSION" && missions.length > 0) {
-      entityId = faker.helpers.arrayElement(missions).id;
-    }
-
+  // User creation logs (admins "created" their own accounts — system action)
+  const allAdmins = [users.superadmin, ...users.admins];
+  for (const admin of allAdmins) {
     await prisma.auditLog.create({
       data: {
-        actorId: actor.id,
-        action: faker.helpers.arrayElement([
-          "CREATE",
-          "UPDATE",
-          "DELETE",
-          "ASSIGN",
-          "VERIFY",
-          "COMPLETE",
-        ]),
-        entityType,
-        entityId,
+        actorId: admin.id,
+        action: "CREATE",
+        entityType: "USER",
+        entityId: admin.id,
         metadata: {
           ip: faker.internet.ip(),
           userAgent: faker.internet.userAgent(),
-          timestamp: new Date().toISOString(),
+          description: "Admin account created.",
         },
       },
     });
+    count++;
   }
 
-  console.log("Audit logs seeding successfully completed.");
+  // Incident-related audit logs
+  for (const incident of incidentResult.incidents) {
+    // CREATE log from reporter
+    if (incident.reportedBy) {
+      await prisma.auditLog.create({
+        data: {
+          actorId: incident.reportedBy,
+          action: "CREATE",
+          entityType: "INCIDENT",
+          entityId: incident.id,
+          metadata: {
+            ip: faker.internet.ip(),
+            status: incident.status,
+          },
+        },
+      });
+      count++;
+    }
+
+    // VERIFY/UPDATE log from admin for verified+ incidents
+    if (["VERIFIED", "RESOLVED", "CLOSED"].includes(incident.status)) {
+      const admin = faker.helpers.arrayElement(users.admins);
+      await prisma.auditLog.create({
+        data: {
+          actorId: admin.id,
+          action: "VERIFY",
+          entityType: "INCIDENT",
+          entityId: incident.id,
+          metadata: {
+            ip: faker.internet.ip(),
+            decision: "VERIFIED",
+          },
+        },
+      });
+      count++;
+    }
+
+    if (incident.status === "FALSE_REPORT") {
+      const admin = faker.helpers.arrayElement(users.admins);
+      await prisma.auditLog.create({
+        data: {
+          actorId: admin.id,
+          action: "UPDATE",
+          entityType: "INCIDENT",
+          entityId: incident.id,
+          metadata: {
+            ip: faker.internet.ip(),
+            decision: "FALSE_REPORT",
+            description: "Marked as false report.",
+          },
+        },
+      });
+      count++;
+    }
+  }
+
+  // Mission-related audit logs
+  for (const mission of missionResult.missions) {
+    const admin = faker.helpers.arrayElement(users.admins);
+
+    await prisma.auditLog.create({
+      data: {
+        actorId: admin.id,
+        action: "CREATE",
+        entityType: "MISSION",
+        entityId: mission.id,
+        metadata: {
+          ip: faker.internet.ip(),
+          status: mission.status,
+          agencyId: mission.agencyId,
+        },
+      },
+    });
+    count++;
+
+    if (mission.status === "COMPLETED" || mission.status === "CLOSED") {
+      await prisma.auditLog.create({
+        data: {
+          actorId: admin.id,
+          action: "COMPLETE",
+          entityType: "MISSION",
+          entityId: mission.id,
+          metadata: {
+            ip: faker.internet.ip(),
+            finalStatus: mission.status,
+          },
+        },
+      });
+      count++;
+    }
+  }
+
+  // A few general system audit entries
+  for (let i = 0; i < 5; i++) {
+    const admin = faker.helpers.arrayElement(allAdmins);
+    await prisma.auditLog.create({
+      data: {
+        actorId: admin.id,
+        action: faker.helpers.arrayElement([
+          "LOGIN",
+          "LOGOUT",
+          "UPDATE_SETTINGS",
+        ]),
+        entityType: "SYSTEM",
+        metadata: {
+          ip: faker.internet.ip(),
+          userAgent: faker.internet.userAgent(),
+          timestamp: faker.date.recent({ days: 30 }).toISOString(),
+        },
+      },
+    });
+    count++;
+  }
+
+  console.log(`  Created ${count} audit logs.`);
 }

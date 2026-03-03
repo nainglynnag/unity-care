@@ -48,6 +48,8 @@ UnityCare uses `express-rate-limit` with standard headers enabled.
 | `POST /incidents/:id/verification` | 1 hour     | 20    | userId |
 | `POST /applications`               | 1 hour     | 5     | userId |
 | `GET /dashboard/*`                 | 15 minutes | 30    | userId |
+| `GET /notifications*`              | 15 minutes | 120   | userId |
+| `POST /missions/:id/tracking`      | 15 minutes | 60    | userId |
 | `PATCH /account/password`          | 15 minutes | 10    | userId |
 | `PATCH /users/:id/password/reset`  | 15 minutes | 20    | userId |
 | `PATCH /users/:id/status`          | 15 minutes | 20    | userId |
@@ -904,6 +906,9 @@ Scope rules for `GET /agencies/:id/volunteers`:
 | `PATCH` | `/missions/:id/agency-decision`    | Any authenticated user             | Agency decision after rejection (authority checked in service) |
 | `PATCH` | `/missions/:id/confirm-completion` | Any authenticated user             | Confirm mission completion (authority checked in service)      |
 | `PATCH` | `/missions/:id/cancel`             | Any authenticated user             | Cancel mission (authority checked in service)                  |
+| `POST`  | `/missions/:id/tracking`           | `VOLUNTEER`                        | Push GPS point while mission is active                         |
+| `GET`   | `/missions/:id/tracking`           | `VOLUNTEER`, `ADMIN`, `SUPERADMIN` | Get mission tracking history                                   |
+| `GET`   | `/missions/:id/tracking/latest`    | `VOLUNTEER`, `ADMIN`, `SUPERADMIN` | Get latest point per assigned volunteer                        |
 
 ### `POST /missions`
 
@@ -1021,6 +1026,74 @@ Scope rules for `GET /agencies/:id/volunteers`:
 No request body.
 
 **Sample Response `200`**: mission accepted.
+
+### `POST /missions/:id/tracking`
+
+> Requires mission assignment and trackable mission status (`EN_ROUTE`, `ON_SITE`, `IN_PROGRESS`).
+> Service-level guard enforces one point per volunteer+mission every 15 seconds.
+
+| Field        | Type     | Required | Rules                                                     |
+| ------------ | -------- | -------- | --------------------------------------------------------- |
+| `latitude`   | `number` | ✅       | -90 to 90                                                 |
+| `longitude`  | `number` | ✅       | -180 to 180                                               |
+| `recordedAt` | `string` | ❌       | ISO datetime, within last 5 minutes and not in the future |
+
+**Sample Response `201`**: created tracking point.
+
+### `GET /missions/:id/tracking`
+
+| Param         | Type     | Required | Rules                             |
+| ------------- | -------- | -------- | --------------------------------- |
+| `volunteerId` | `string` | ❌       | UUID                              |
+| `since`       | `string` | ❌       | ISO datetime                      |
+| `limit`       | `number` | ❌       | Default `100`, min `1`, max `500` |
+
+**Sample Response `200`**: ordered tracking history.
+
+### `GET /missions/:id/tracking/latest`
+
+No request body.
+
+**Sample Response `200`**: latest GPS point per volunteer assigned to the mission.
+
+---
+
+## Notifications (`/notifications`)
+
+> All `/notifications` routes require authentication and are scoped to the authenticated user.
+
+| Method   | Endpoint                      | Role                   | Description                                           |
+| -------- | ----------------------------- | ---------------------- | ----------------------------------------------------- |
+| `GET`    | `/notifications`              | Any authenticated user | List own notifications with filters + pagination      |
+| `GET`    | `/notifications/unread-count` | Any authenticated user | Get unread badge count                                |
+| `PATCH`  | `/notifications/:id/read`     | Any authenticated user | Mark one notification as read                         |
+| `PATCH`  | `/notifications/read-all`     | Any authenticated user | Mark all unread notifications as read                 |
+| `DELETE` | `/notifications/:id`          | Any authenticated user | Delete one notification                               |
+| `DELETE` | `/notifications`              | Any authenticated user | Bulk delete (safe default keeps unread notifications) |
+
+### `GET /notifications`
+
+| Param        | Type     | Required | Rules                            |
+| ------------ | -------- | -------- | -------------------------------- |
+| `type`       | `string` | ❌       | Notification type enum           |
+| `unreadOnly` | `string` | ❌       | `"true"` or `"false"`            |
+| `page`       | `number` | ❌       | Default `1`                      |
+| `perPage`    | `number` | ❌       | Default `20`, min `1`, max `100` |
+
+Response includes paginated links (`self`, `next`, `prev`) and `unreadCount` in metadata.
+
+### `DELETE /notifications`
+
+| Param        | Type     | Required | Rules                                             |
+| ------------ | -------- | -------- | ------------------------------------------------- |
+| `keepUnread` | `string` | ❌       | `"true"` or `"false"`; default behavior is `true` |
+
+When `keepUnread` is omitted (or `true`), only read notifications are deleted.
+Pass `keepUnread=false` to delete both read and unread notifications.
+
+### Notification cleanup job
+
+Read notifications older than 90 days are removed automatically by a daily background cleanup job.
 
 ---
 

@@ -1,9 +1,9 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
-import Header from "../components/Header";
-import { API_BASE, setAuthTokens, setCurrentUser } from "../lib/api";
-import { useGoogleAuth } from "../hooks/useGoogleAuth";
+import Header from "../../components/Header";
+import { API_BASE, setAuthTokens, setCurrentUser } from "../../lib/api";
+import { useGoogleAuth } from "../../hooks/useGoogleAuth";
 
 function Login() {
   const navigate = useNavigate();

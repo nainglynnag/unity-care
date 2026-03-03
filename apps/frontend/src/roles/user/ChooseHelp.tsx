@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import Header from "../components/Header";
+import Header from "../../components/Header";
 import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
 import PhoneIcon from "@mui/icons-material/Phone";
 import VideocamIcon from "@mui/icons-material/Videocam";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import VolumeOffIcon from "@mui/icons-material/VolumeOff";
-import { API_BASE, authFetch } from "../lib/api";
-import { createIncident, getIncidentCategories, type IncidentCategory } from "../lib/incidents";
+import { API_BASE, authFetch } from "../../lib/api";
+import { createIncident, getIncidentCategories, type IncidentCategory } from "../../lib/incidents";
 
 const HELP_TITLES: Record<string, string> = {
   text: "Emergency - Text support",

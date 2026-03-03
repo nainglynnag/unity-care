@@ -130,7 +130,7 @@ export async function login(email: string, password: string) {
     }),
     prisma.user.update({
       where: { id: user.id },
-      data: { lastLoginAt: now },
+      data: { updatedAt: now },
     }),
   ]);
 
@@ -190,7 +190,7 @@ export async function loginOrRegisterWithGoogle(idToken: string) {
     data: {
       name,
       email,
-      phone: `g-${googleId}`,
+      phone: "",
       passwordHash: hashedPassword,
       googleId,
       ...(profileImageUrl != null ? { profileImageUrl } : {}),

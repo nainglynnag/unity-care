@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import Header from '../components/Header';
+import Header from '../../components/Header';
 import { useNavigate } from 'react-router-dom';
-import { API_BASE, authFetch } from '../lib/api';
+import { API_BASE, authFetch } from '../../lib/api';
 
 const EmergencyAlert: React.FC = () => {
   const [isAlerting, setIsAlerting] = useState(false);

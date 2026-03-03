@@ -36,6 +36,7 @@ export type StoredUser = {
   email?: string;
   role?: string;
   profileImageUrl?: string | null;
+  phone?: string | null;
 };
 
 export function setCurrentUser(user: StoredUser | null) {

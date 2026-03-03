@@ -1,8 +1,8 @@
 import { z } from "zod";
 
 // Update Profile
-// name and profileImageUrl only.
-// Phone and email requiring OTP/email verification has not been implemented yet
+// name, profileImageUrl and (optionally) phone.
+// Phone/email verification is not implemented yet — keep usage minimal.
 // At least one field required to prevent no-op requests.
 export const updateProfileSchema = z
   .object({
@@ -12,10 +12,24 @@ export const updateProfileSchema = z
       .max(100, "Name cannot exceed 100 characters.")
       .optional(),
     profileImageUrl: z.url("profileImageUrl must be a valid URL.").optional(),
+    phone: z
+      .string()
+      .regex(
+        /^\+?[0-9]{7,15}$/,
+        "Phone number must be 7–15 digits and may start with +.",
+      )
+      .optional(),
   })
-  .refine((d) => d.name !== undefined || d.profileImageUrl !== undefined, {
-    message: "At least one field (name or profileImageUrl) must be provided.",
-  });
+  .refine(
+    (d) =>
+      d.name !== undefined ||
+      d.profileImageUrl !== undefined ||
+      d.phone !== undefined,
+    {
+      message:
+        "At least one field (name, profileImageUrl or phone) must be provided.",
+    },
+  );
 
 // Update Password (self-service, all roles)
 // currentPassword ALWAYS required. No privileged bypass.

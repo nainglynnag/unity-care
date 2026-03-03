@@ -7,7 +7,7 @@ import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import PhoneIcon from "@mui/icons-material/Phone";
 import { useNavigate, useLocation } from "react-router-dom";
-import { getIncident, type IncidentDetail } from "../lib/incidents";
+import { getIncident, type IncidentDetail } from "../../lib/incidents";
 
 type ChatAttachment = {
   type: "image" | "video" | "file";

@@ -1,28 +1,29 @@
 import { Routes, Route } from "react-router-dom";
-import SOSpage from "../pages/SOSpage";
-import Login from "../pages/login";
-import SignUp from "../pages/signup";
-import EmergencyProfileSetup from "../pages/EmergencyProfileSetup";
-import ChooseHelp from "../pages/ChooseHelp";
-import Chat from "../pages/Chat";
-import Map from "../pages/Map";
-import CompleteMission from "../pages/CompleteMission";
-import VoiceCall from "../pages/VoiceCall";
-import VideoCall from "../pages/VideoCall";
+import SOSpage from "../roles/user/SOSpage";
+import Login from "../roles/user/login";
+import SignUp from "../roles/user/signup";
+import EmergencyProfileSetup from "../roles/user/EmergencyProfileSetup";
+import ChooseHelp from "../roles/user/ChooseHelp";
+import Chat from "../roles/user/Chat";
+import Map from "../roles/user/Map";
+import CompleteMission from "../roles/user/CompleteMission";
+import VoiceCall from "../roles/user/VoiceCall";
+import VideoCall from "../roles/user/VideoCall";
+
 
 export const UserRoutes = () => {
   return (
     <Routes>
       <Route path="/" element={<SOSpage />} />
-      <Route path="/Login" element={<Login />} />
-      <Route path="/SignUp" element={<SignUp />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/signup" element={<SignUp />} />
       <Route path="/setup-profile" element={<EmergencyProfileSetup />} />
-      <Route path="/ChooseHelp" element={<ChooseHelp />} />
-      <Route path="/Chat" element={<Chat />} />
-      <Route path="/Map" element={<Map />} />
-      <Route path="/CompleteMission" element={<CompleteMission />} />
-      <Route path="/VoiceCall" element={<VoiceCall />} />
-      <Route path="/VideoCall" element={<VideoCall />} />
+      <Route path="/choosehelp" element={<ChooseHelp />} />
+      <Route path="/chat" element={<Chat />} />
+      <Route path="/map" element={<Map />} />
+      <Route path="/completemission" element={<CompleteMission />} />
+      <Route path="/voicecall" element={<VoiceCall />} />
+      <Route path="/videocall" element={<VideoCall />} />
     </Routes>
   );
 };

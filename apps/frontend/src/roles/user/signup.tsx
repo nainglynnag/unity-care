@@ -1,8 +1,8 @@
 import { useNavigate, Link } from "react-router-dom";
 import { useState, useEffect } from "react";
-import Header from "../components/Header";
-import { API_BASE, setAuthTokens, setCurrentUser } from "../lib/api";
-import { useGoogleAuth } from "../hooks/useGoogleAuth";
+import Header from "../../components/Header";
+import { API_BASE, setAuthTokens, setCurrentUser } from "../../lib/api";
+import { useGoogleAuth } from "../../hooks/useGoogleAuth";
 
 function Signup() {
   const navigate = useNavigate();
@@ -95,7 +95,10 @@ function Signup() {
         const payload = json?.data;
         setAuthTokens(payload ?? {});
         setCurrentUser(payload?.user ?? null);
-        navigate("/setup-profile", { replace: true, state: { fullName: payload?.user?.name } });
+        navigate("/setup-profile", {
+          replace: true,
+          state: { fullName: payload?.user?.name },
+        });
       } catch {
         setApiError("Network error. Please try again.");
       } finally {

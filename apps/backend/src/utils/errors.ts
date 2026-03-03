@@ -584,6 +584,38 @@ export class NotificationNotFoundError extends AppError {
   }
 }
 
+// Agency Members
+
+export class AgencyMemberNotFoundError extends AppError {
+  constructor() {
+    super(
+      "AGENCY_MEMBER_NOT_FOUND",
+      "This user is not a member of the specified agency.",
+      404,
+    );
+  }
+}
+
+export class CannotChangeOwnRoleError extends AppError {
+  constructor() {
+    super(
+      "CANNOT_CHANGE_OWN_ROLE",
+      "You cannot change your own agency role.",
+      400,
+    );
+  }
+}
+
+export class DirectorRequiredError extends AppError {
+  constructor() {
+    super(
+      "DIRECTOR_REQUIRED",
+      "An agency must have at least one director. Promote another member to director first.",
+      409,
+    );
+  }
+}
+
 // Mission Tracking
 
 export class NotAssignedToMissionError extends AppError {

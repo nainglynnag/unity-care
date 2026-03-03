@@ -5,11 +5,17 @@ import {
   updateAgencySchema,
   listAgenciesQuerySchema,
   listAvailableVolunteersQuerySchema,
+  updateMemberRoleSchema,
 } from "../validators/agency.validator";
 import { successResponse, paginatedResponse } from "../utils/response";
 
 interface AgencyParams extends Record<string, string> {
   id: string;
+}
+
+interface MemberRoleParams extends Record<string, string> {
+  id: string;
+  volunteerId: string;
 }
 
 function buildQs(
@@ -146,6 +152,27 @@ export async function listAvailableVolunteers(
         prev: `${base}?${buildQs(query, currentPage - 1, perPage)}`,
       }),
     });
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function updateMemberRole(
+  req: Request<MemberRoleParams>,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const data = updateMemberRoleSchema.parse(req.body);
+    return successResponse(
+      res,
+      await agencyService.updateMemberRole(
+        { id: req.user!.sub, role: req.user!.role },
+        req.params.id,
+        req.params.volunteerId,
+        data,
+      ),
+    );
   } catch (e) {
     next(e);
   }

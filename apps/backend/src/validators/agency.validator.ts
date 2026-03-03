@@ -41,9 +41,14 @@ export const listAvailableVolunteersQuerySchema = z.object({
   perPage: z.coerce.number().int().min(1).max(100).default(20),
 });
 
+export const updateMemberRoleSchema = z.object({
+  role: z.enum(["MEMBER", "COORDINATOR", "DIRECTOR"]),
+});
+
 export type CreateAgencyInput = z.infer<typeof createAgencySchema>;
 export type UpdateAgencyInput = z.infer<typeof updateAgencySchema>;
 export type ListAgenciesQuery = z.infer<typeof listAgenciesQuerySchema>;
 export type ListAvailableVolunteersQuery = z.infer<
   typeof listAvailableVolunteersQuerySchema
 >;
+export type UpdateMemberRoleInput = z.infer<typeof updateMemberRoleSchema>;

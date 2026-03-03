@@ -6,6 +6,9 @@ import {
   AgencyNameConflictError,
   CannotDeactivateWithActiveDataError,
   CannotDeleteWithLinkedDataError,
+  AgencyMemberNotFoundError,
+  CannotChangeOwnRoleError,
+  DirectorRequiredError,
 } from "../utils/errors";
 import {
   resolveWriteAuthority,
@@ -16,6 +19,7 @@ import type {
   UpdateAgencyInput,
   ListAgenciesQuery,
   ListAvailableVolunteersQuery,
+  UpdateMemberRoleInput,
 } from "../validators/agency.validator";
 
 export async function listAgencies(
@@ -282,5 +286,73 @@ export async function listAvailableVolunteers(
       currentPage: page,
       perPage,
     },
+  };
+}
+
+// SUPERADMIN: any agency.
+// DIRECTOR: own agency only — cannot demote self (must always have ≥1 director).
+export async function updateMemberRole(
+  requester: RequesterContext,
+  agencyId: string,
+  volunteerId: string,
+  data: UpdateMemberRoleInput,
+) {
+  // 1. Agency exists?
+  const agency = await prisma.agency.findUnique({ where: { id: agencyId } });
+  if (!agency) throw new AgencyNotFoundError();
+
+  // 2. Authorise caller
+  const isSuperadmin = requester.role === "SUPERADMIN";
+
+  if (!isSuperadmin) {
+    // Must be DIRECTOR of this exact agency
+    const callerMembership = await prisma.agencyMember.findUnique({
+      where: {
+        agencyId_userId: { agencyId, userId: requester.id },
+      },
+      select: { role: true },
+    });
+    if (!callerMembership || callerMembership.role !== AgencyRole.DIRECTOR) {
+      throw new ForbiddenError();
+    }
+  }
+
+  // 3. Cannot change own role
+  if (requester.id === volunteerId) throw new CannotChangeOwnRoleError();
+
+  // 4. Target must be a member of this agency
+  const target = await prisma.agencyMember.findUnique({
+    where: { agencyId_userId: { agencyId, userId: volunteerId } },
+    select: { role: true },
+  });
+  if (!target) throw new AgencyMemberNotFoundError();
+
+  // 5. If demoting the only director → block
+  if (target.role === AgencyRole.DIRECTOR && data.role !== "DIRECTOR") {
+    const directorCount = await prisma.agencyMember.count({
+      where: { agencyId, role: AgencyRole.DIRECTOR },
+    });
+    if (directorCount <= 1) throw new DirectorRequiredError();
+  }
+
+  // 6. Update
+  const updated = await prisma.agencyMember.update({
+    where: { agencyId_userId: { agencyId, userId: volunteerId } },
+    data: { role: data.role as AgencyRole },
+    select: {
+      agencyId: true,
+      userId: true,
+      role: true,
+      joinedAt: true,
+      user: { select: { id: true, name: true, email: true } },
+    },
+  });
+
+  return {
+    agencyId: updated.agencyId,
+    userId: updated.userId,
+    role: updated.role,
+    joinedAt: updated.joinedAt,
+    user: updated.user,
   };
 }

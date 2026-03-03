@@ -30,4 +30,12 @@ router.get(
   ctrl.listAvailableVolunteers,
 );
 
+// Update a member's agency role (MEMBER/COORDINATOR/DIRECTOR)
+// SUPERADMIN: any agency.  DIRECTOR: own agency only.
+router.patch(
+  "/:id/volunteers/:volunteerId/role",
+  requireRoles("SUPERADMIN", "VOLUNTEER"),
+  ctrl.updateMemberRole,
+);
+
 export default router;

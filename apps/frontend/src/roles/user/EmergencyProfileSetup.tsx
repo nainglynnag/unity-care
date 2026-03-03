@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import Header from "../../components/Header";
-import { API_BASE, authFetch, getCurrentUser } from "../../lib/api";
+import Header from "../../components/user/Header";
+import { API_BASE, authFetch, getAccessToken, getCurrentUser } from "../../lib/api";
 import { createEmergencyProfile } from "../../lib/emergencyProfile";
 
 const BLOOD_TYPES = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"] as const;
@@ -107,9 +107,13 @@ function EmergencyProfileSetup() {
 
   useEffect(() => {
     const checkAuth = async () => {
+      if (!getAccessToken()) {
+        navigate("/signin", { replace: true });
+        return;
+      }
       const res = await authFetch(`${API_BASE}/auth/me`);
       if (!res.ok) {
-        navigate("/login", { replace: true });
+        navigate("/signin", { replace: true });
       }
     };
     checkAuth();

@@ -7,7 +7,7 @@ import {
   MapRoute,
   MarkerContent,
   useMap,
-} from '@/components/mapcn';
+} from '@/components/user/mapcn';
 import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
 import PhoneIcon from '@mui/icons-material/Phone';
 import StarIcon from '@mui/icons-material/Star';

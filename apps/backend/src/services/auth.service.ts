@@ -134,10 +134,16 @@ export async function login(email: string, password: string) {
     }),
   ]);
 
+  const volunteerProfile = await prisma.volunteerProfile.findUnique({
+    where: { userId: user.id },
+  });
   return {
     accessToken: generateAccessToken(payload),
     refreshToken: rawRefreshToken,
-    user: sanitizeUser(user, role),
+    user: {
+      ...sanitizeUser(user, role),
+      hasVolunteerProfile: !!volunteerProfile,
+    },
   };
 }
 
@@ -178,10 +184,16 @@ export async function loginOrRegisterWithGoogle(idToken: string) {
     if (!updated || !updated.isActive) throw new AccountInactiveError();
     const role = updated.roles[0]?.role.name ?? "CIVILIAN";
     const payloadJwt = { sub: updated.id, role };
+    const volunteerProfile = await prisma.volunteerProfile.findUnique({
+      where: { userId: updated.id },
+    });
     return {
       accessToken: generateAccessToken(payloadJwt),
       refreshToken: generateRefreshToken(payloadJwt),
-      user: sanitizeUser(updated, role),
+      user: {
+        ...sanitizeUser(updated, role),
+        hasVolunteerProfile: !!volunteerProfile,
+      },
     };
   }
 
@@ -203,20 +215,26 @@ export async function loginOrRegisterWithGoogle(idToken: string) {
   });
   const newRole = "CIVILIAN";
   const payloadJwt = { sub: newUser.id, role: newRole };
+  const volunteerProfile = await prisma.volunteerProfile.findUnique({
+    where: { userId: newUser.id },
+  });
   return {
     accessToken: generateAccessToken(payloadJwt),
     refreshToken: generateRefreshToken(payloadJwt),
-    user: sanitizeUser(
-      {
-        id: newUser.id,
-        name: newUser.name,
-        email: newUser.email,
-        phone: newUser.phone,
-        profileImageUrl: newUser.profileImageUrl,
-        createdAt: newUser.createdAt,
-      },
-      newRole,
-    ),
+    user: {
+      ...sanitizeUser(
+        {
+          id: newUser.id,
+          name: newUser.name,
+          email: newUser.email,
+          phone: newUser.phone,
+          profileImageUrl: newUser.profileImageUrl,
+          createdAt: newUser.createdAt,
+        },
+        newRole,
+      ),
+      hasVolunteerProfile: !!volunteerProfile,
+    },
   };
 }
 
@@ -231,7 +249,13 @@ export async function getMe(userId: string) {
   if (!user.isActive) throw new AccountInactiveError();
 
   const role = user.roles[0]?.role.name ?? "CIVILIAN";
-  return sanitizeUser(user, role);
+  const volunteerProfile = await prisma.volunteerProfile.findUnique({
+    where: { userId: user.id },
+  });
+  return {
+    ...sanitizeUser(user, role),
+    hasVolunteerProfile: !!volunteerProfile,
+  };
 }
 
 // Refresh Tokens
@@ -239,59 +263,64 @@ export async function getMe(userId: string) {
 export async function refreshTokens(userId: string, rawRefreshToken: string) {
   const tokenHash = hashToken(rawRefreshToken);
 
-  return prisma.$transaction(async (tx) => {
-    // 1. Validate token exists in DB
-    const stored = await tx.refreshToken.findUnique({ where: { tokenHash } });
+  return prisma.$transaction(
+    async (tx) => {
+      // 1. Validate token exists in DB
+      const stored = await tx.refreshToken.findUnique({ where: { tokenHash } });
 
-    // All three rejection cases return the same error — no information leak.
-    if (!stored || stored.revokedAt !== null || stored.expiresAt < new Date()) {
-      throw new TokenInvalidError();
-    }
+      // All three rejection cases return the same error — no information leak.
+      if (!stored || stored.revokedAt !== null || stored.expiresAt < new Date()) {
+        throw new TokenInvalidError();
+      }
 
-    // 2. Validate user — must be active and not soft-deleted.
-    const user = await tx.user.findUnique({
-      where: { id: userId },
-      include: { roles: { include: { role: true } } },
-    });
+      // 2. Validate user — must be active and not soft-deleted.
+      const user = await tx.user.findUnique({
+        where: { id: userId },
+        include: { roles: { include: { role: true } } },
+      });
 
-    if (!user || user.deletedAt !== null) throw new TokenInvalidError();
-    if (!user.isActive) throw new AccountInactiveError();
+      if (!user || user.deletedAt !== null) throw new TokenInvalidError();
+      if (!user.isActive) throw new AccountInactiveError();
 
-    const role = user.roles[0]?.role.name ?? "CIVILIAN";
-    const payload = { sub: user.id, role };
-    const newRawRefreshToken = generateRefreshToken(payload);
-    const newTokenHash = hashToken(newRawRefreshToken);
+      const role = user.roles[0]?.role.name ?? "CIVILIAN";
+      const payload = { sub: user.id, role };
+      const newRawRefreshToken = generateRefreshToken(payload);
+      const newTokenHash = hashToken(newRawRefreshToken);
 
-    // 3. Revoke old token (rotation — each refresh token is single-use).
-    await tx.refreshToken.update({
-      where: { tokenHash },
-      data: { revokedAt: new Date() },
-    });
+      // 3. Revoke old token (rotation — each refresh token is single-use).
+      await tx.refreshToken.update({
+        where: { tokenHash },
+        data: { revokedAt: new Date() },
+      });
 
-    // 4. Issue and store the new refresh token.
-    await tx.refreshToken.create({
-      data: {
-        userId,
-        tokenHash: newTokenHash,
-        expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
-      },
-    });
+      // 4. Issue and store the new refresh token.
+      await tx.refreshToken.create({
+        data: {
+          userId,
+          tokenHash: newTokenHash,
+          expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
+        },
+      });
 
-    // 5. Lazy cleanup — delete this user's truly expired tokens only.
-    // Does NOT delete revoked tokens — those stay for 24h grace period.
-    await tx.refreshToken.deleteMany({
-      where: {
-        userId,
-        revokedAt: null,
-        expiresAt: { lt: new Date() },
-      },
-    });
+      // 5. Lazy cleanup — delete this user's truly expired tokens only.
+      await tx.refreshToken.deleteMany({
+        where: {
+          userId,
+          revokedAt: null,
+          expiresAt: { lt: new Date() },
+        },
+      });
 
-    return {
-      accessToken: generateAccessToken(payload),
-      refreshToken: newRawRefreshToken,
-    };
-  });
+      return {
+        accessToken: generateAccessToken(payload),
+        refreshToken: newRawRefreshToken,
+      };
+    },
+    {
+      maxWait: 10_000,
+      timeout: 15_000,
+    },
+  );
 }
 
 // Strips passwordHash — never expose it to the client.

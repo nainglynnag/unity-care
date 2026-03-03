@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { API_BASE, authFetch, clearAuthTokens, getAccessToken, getCurrentUser, setCurrentUser } from '../lib/api';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { API_BASE, authFetch, clearAuthTokens, getAccessToken, getCurrentUser, setCurrentUser } from '../../lib/api';
 
 type CurrentUser = {
   sub?: string;
@@ -17,6 +17,7 @@ const Header: React.FC = () => {
   const [profileImageFailed, setProfileImageFailed] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+  const location = useLocation();
 
   const showProfileImage = user?.profileImageUrl && !profileImageFailed;
 
@@ -99,20 +100,23 @@ const Header: React.FC = () => {
       .join('');
   };
 
+  const isVolunteerContext =
+    location.pathname.startsWith('/volunteer');
+
   const handleSignIn = () => {
-    navigate('/login');
+    navigate(isVolunteerContext ? '/volunteer-signin' : '/signin');
     closeMenu();
   };
 
   const handleSignUp = () => {
-    navigate('/signup');
+    navigate(isVolunteerContext ? '/volunteer-apply' : '/signup');
     closeMenu();
   };
 
   const handleSignOut = () => {
     clearAuthTokens();
     setUser(null);
-    navigate('/login', { replace: true });
+    navigate(isVolunteerContext ? '/volunteer-signin' : '/signin', { replace: true });
     closeMenu();
   };
 

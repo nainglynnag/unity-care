@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import Header from '../../components/Header';
+import Header from '../../components/user/Header';
 import { useNavigate } from 'react-router-dom';
-import { API_BASE, authFetch } from '../../lib/api';
+import { API_BASE, authFetch, getAccessToken } from '../../lib/api';
 
 const EmergencyAlert: React.FC = () => {
   const [isAlerting, setIsAlerting] = useState(false);
@@ -13,14 +13,14 @@ const EmergencyAlert: React.FC = () => {
     // TODO: Implement emergency alert API call
     console.log('Emergency alert triggered!');
 
-    let targetPath = '/login';
+    let targetPath = '/signin';
     try {
-      const res = await authFetch(`${API_BASE}/auth/me`);
-      if (res.ok) {
-        targetPath = '/choosehelp';
+      if (getAccessToken()) {
+        const res = await authFetch(`${API_BASE}/auth/me`);
+        if (res.ok) targetPath = '/choosehelp';
       }
     } catch {
-      targetPath = '/login';
+      targetPath = '/signin';
     }
 
     // Keep 3 second delay, then route based on auth state

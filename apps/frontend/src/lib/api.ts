@@ -37,6 +37,7 @@ export type StoredUser = {
   role?: string;
   profileImageUrl?: string | null;
   phone?: string | null;
+  hasVolunteerProfile?: boolean;
 };
 
 export function setCurrentUser(user: StoredUser | null) {

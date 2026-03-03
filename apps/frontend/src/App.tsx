@@ -1,11 +1,17 @@
-import { BrowserRouter as Router } from 'react-router-dom';
-import { UserRoutes } from './routes';
+import { BrowserRouter as Router, Routes } from 'react-router-dom';
+import { UserRouteElements } from './routes/user.route';
+import { VolunteerRouteElements } from './routes/volunteer.route';
 import './App.css'
 
 function User() {
   return (
     <Router>
-      <UserRoutes />
+      <Routes>
+        {/* Volunteer routes first so /volunteer-signin etc. match */}
+        {VolunteerRouteElements}
+        {/* User routes */}
+        {UserRouteElements}
+      </Routes>
     </Router>
   );
 }

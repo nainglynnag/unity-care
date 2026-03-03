@@ -1,6 +1,6 @@
 import { useNavigate, Link } from "react-router-dom";
 import { useState, useEffect } from "react";
-import Header from "../../components/Header";
+import Header from "../../components/user/Header";
 import { API_BASE, setAuthTokens, setCurrentUser } from "../../lib/api";
 import { useGoogleAuth } from "../../hooks/useGoogleAuth";
 
@@ -145,7 +145,7 @@ function Signup() {
               {alreadyRegistered && (
                 <p className="text-white/90">
                   Already have an account?{" "}
-                  <Link to="/login" className="text-red-400 hover:text-red-300 font-medium underline">
+                  <Link to="/signin" className="text-red-400 hover:text-red-300 font-medium underline">
                     Sign in
                   </Link>
                 </p>
@@ -337,7 +337,7 @@ function Signup() {
           {/* Sign In Link */}
           <p className="text-center mt-6 text-white/70 text-sm">
             Already have an account?{" "}
-            <Link to="/login" className="text-red-500 hover:text-red-400 font-medium">
+            <Link to="/signin" className="text-red-500 hover:text-red-400 font-medium">
               Sign In
             </Link>
           </p>

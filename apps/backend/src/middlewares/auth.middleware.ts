@@ -5,6 +5,7 @@ import {
   TokenInvalidError,
   ForbiddenError,
 } from "../utils/errors";
+import { prisma } from "../lib/prisma";
 
 declare global {
   namespace Express {
@@ -44,6 +45,30 @@ export function requireRoles(...allowedRoles: string[]) {
 
     next();
   };
+}
+
+// Allow access if user has VOLUNTEER role OR has a VolunteerProfile (e.g. approved but token has old role).
+export async function requireVolunteerProfile(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  const userId = req.user?.sub;
+  const userRole = req.user?.role;
+
+  if (!userId) return next(new ForbiddenError());
+  if (userRole === "VOLUNTEER") return next();
+
+  try {
+    const profile = await prisma.volunteerProfile.findUnique({
+      where: { userId },
+      select: { userId: true },
+    });
+    if (profile) return next();
+    next(new ForbiddenError());
+  } catch (err) {
+    next(err);
+  }
 }
 
 export function isSuperAdmin(role: string): boolean {

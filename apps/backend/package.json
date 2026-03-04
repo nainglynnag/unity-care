@@ -4,7 +4,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "bun tsx watch src/server.ts",
+    "dev": "bun --watch src/server.ts",
     "build": "bun build src/server.ts --outdir dist"
   },
   "devDependencies": {

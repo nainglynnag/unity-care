@@ -17,10 +17,6 @@ import {
   updateVolunteerProfile,
   type VolunteerProfile as VolunteerProfileType,
 } from "../../lib/volunteerProfile";
-import {
-  getMyAgencyMembership,
-  type AgencyMembership,
-} from "../../lib/agencyTeam";
 import { updateProfile } from "../../lib/account";
 import { getSkills, type Skill } from "../../lib/referenceData";
 
@@ -37,16 +33,6 @@ const MOCK_AVAILABILITY: Record<string, { AM: boolean; PM: boolean }> = {
   SAT: { AM: false, PM: false },
   SUN: { AM: false, PM: false },
 };
-
-const ROLE_LABELS: Record<string, string> = {
-  DIRECTOR: "Director",
-  COORDINATOR: "Coordinator",
-  MEMBER: "Volunteer",
-};
-
-function getRoleLabel(role: string) {
-  return ROLE_LABELS[role] ?? role;
-}
 
 function getInitials(name?: string) {
   if (!name) return "?";
@@ -65,8 +51,6 @@ export default function VolunteerProfile() {
   const [availabilityUpdating, setAvailabilityUpdating] = useState(false);
   const [lastLocationLabel, setLastLocationLabel] = useState<string | null>(null);
   const [lastLocationLoading, setLastLocationLoading] = useState(false);
-  const [membership, setMembership] = useState<AgencyMembership | null>(null);
-
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState("");
   const [nameSaving, setNameSaving] = useState(false);
@@ -97,9 +81,6 @@ export default function VolunteerProfile() {
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
-    getMyAgencyMembership().then((m) => {
-      if (!cancelled) setMembership(m);
-    });
     return () => {
       cancelled = true;
     };
@@ -295,9 +276,7 @@ export default function VolunteerProfile() {
           <div className="flex items-center gap-2 pl-2 border-l border-gray-700">
             <div className="text-right hidden sm:block">
               <p className="text-white font-medium text-sm">{displayName}</p>
-              <p className="text-red-500 text-xs font-medium">
-                {membership ? `${getRoleLabel(membership.myRole)} — ${membership.agencyName}` : "Volunteer"}
-              </p>
+              <p className="text-red-500 text-xs font-medium">Volunteer</p>
             </div>
             <div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center shrink-0 border-2 border-red-500/30">
               <span className="text-white text-sm font-semibold">{initials}</span>
@@ -372,22 +351,6 @@ export default function VolunteerProfile() {
                     </>
                   )}
                 </div>
-                {membership && (
-                  <div className="flex items-center gap-2 mb-1">
-                    <span
-                      className={`inline-block px-2.5 py-0.5 rounded text-xs font-bold uppercase tracking-wider ${
-                        membership.myRole === "DIRECTOR"
-                          ? "bg-purple-500/20 text-purple-400"
-                          : membership.myRole === "COORDINATOR"
-                            ? "bg-blue-500/20 text-blue-400"
-                            : "bg-red-500/20 text-red-400"
-                      }`}
-                    >
-                      {getRoleLabel(membership.myRole)}
-                    </span>
-                    <span className="text-white/50 text-xs">{membership.agencyName}</span>
-                  </div>
-                )}
                 <div className="flex items-center gap-2 text-white/70 text-sm">
                   {editingRadius ? (
                     <div className="flex items-center gap-2">
@@ -606,19 +569,6 @@ export default function VolunteerProfile() {
               <span className="text-lg font-medium text-white/90">{initials}</span>
             </div>
             <p className="text-white font-medium mt-3 text-center">{displayName}</p>
-            {membership && (
-              <span
-                className={`mt-1.5 inline-block px-2.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                  membership.myRole === "DIRECTOR"
-                    ? "bg-purple-500/20 text-purple-400"
-                    : membership.myRole === "COORDINATOR"
-                      ? "bg-blue-500/20 text-blue-400"
-                      : "bg-red-500/20 text-red-400"
-                }`}
-              >
-                {getRoleLabel(membership.myRole)}
-              </span>
-            )}
           </div>
 
           {/* Mission Impact (placeholder; no backend stats yet) */}

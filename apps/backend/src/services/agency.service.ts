@@ -214,14 +214,10 @@ export async function listAvailableVolunteers(
 
   if (requester.role !== "SUPERADMIN" && requester.role !== "ADMIN") {
     const membership = await prisma.agencyMember.findFirst({
-      where: {
-        userId: requester.id,
-        role: { in: [AgencyRole.COORDINATOR, AgencyRole.DIRECTOR] },
-      },
+      where: { userId: requester.id },
       select: { agencyId: true },
     });
     if (!membership) throw new ForbiddenError();
-    // COORDINATOR/DIRECTOR can only query their own agency
     if (agencyId !== membership.agencyId) throw new ForbiddenError();
     effectiveAgencyId = membership.agencyId;
   }
@@ -232,12 +228,11 @@ export async function listAvailableVolunteers(
   if (!agency) throw new AgencyNotFoundError();
 
   const where = {
-    isAvailable: true,
     user: {
       isActive: true,
       deletedAt: null,
       agencyMemberships: {
-        some: { agencyId: effectiveAgencyId, role: AgencyRole.MEMBER },
+        some: { agencyId: effectiveAgencyId },
       },
       ...(search && {
         name: { contains: search, mode: "insensitive" as const },
@@ -256,7 +251,16 @@ export async function listAvailableVolunteers(
         lastKnownLatitude: true,
         lastKnownLongitude: true,
         user: {
-          select: { id: true, name: true, profileImageUrl: true },
+          select: {
+            id: true,
+            name: true,
+            profileImageUrl: true,
+            agencyMemberships: {
+              where: { agencyId: effectiveAgencyId },
+              select: { role: true },
+              take: 1,
+            },
+          },
         },
         skills: {
           select: { skill: { select: { id: true, name: true } } },
@@ -278,6 +282,7 @@ export async function listAvailableVolunteers(
       availabilityRadiusKm: v.availabilityRadiusKm,
       lastKnownLatitude: v.lastKnownLatitude,
       lastKnownLongitude: v.lastKnownLongitude,
+      role: v.user.agencyMemberships[0]?.role ?? AgencyRole.MEMBER,
       skills: v.skills.map((s) => ({ id: s.skill.id, name: s.skill.name })),
     })),
     pagination: {

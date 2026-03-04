@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Loader2, Lock } from "lucide-react";
+import { Loader2, Lock, CheckCircle } from "lucide-react";
 import Header from "../../components/user/Header";
 import { API_BASE, getAccessToken, setAuthTokens, setCurrentUser } from "../../lib/api";
 import {
@@ -11,7 +11,7 @@ import {
   type Skill,
 } from "../../lib/volunteerApplication";
 
-type Step = "register" | "application";
+type Step = "register" | "application" | "submitted";
 
 function isAtLeast18(dateStr: string): boolean {
   if (!dateStr) return true;
@@ -187,7 +187,7 @@ export default function VolunteerApplication() {
         experience: appForm.experience.trim() || undefined,
         consentGiven: true,
       });
-      navigate("/volunteer-dashboard", { replace: true });
+      setStep("submitted");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to submit application.");
     } finally {
@@ -223,16 +223,52 @@ export default function VolunteerApplication() {
               </svg>
             </div>
           </div>
-          <h1 className="text-white text-3xl font-bold text-center mb-2">Volunteer Application</h1>
+          <h1 className="text-white text-3xl font-bold text-center mb-2">
+            {step === "submitted" ? "Application Submitted" : "Volunteer Application"}
+          </h1>
           <p className="text-white/70 text-sm text-center mb-8">
             {step === "register"
               ? "Create an account, then complete your application."
-              : "Complete your volunteer application."}
+              : step === "submitted"
+                ? "Thank you for applying!"
+                : "Complete your volunteer application."}
           </p>
 
           {error && (
             <div className="mb-4 p-3 rounded-lg bg-red-500/20 border border-red-500/50 text-red-400 text-sm">
               {error}
+            </div>
+          )}
+
+          {step === "submitted" && (
+            <div className="text-center space-y-6">
+              <div className="flex justify-center">
+                <div className="w-16 h-16 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                  <CheckCircle className="w-8 h-8 text-emerald-400" />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-white/80 text-sm">
+                  Your volunteer application has been submitted and is now <span className="text-amber-400 font-semibold">pending review</span>.
+                </p>
+                <p className="text-white/50 text-xs">
+                  A coordinator will review your application. Once approved, your account will be upgraded to Volunteer and you can sign in to the volunteer dashboard.
+                </p>
+              </div>
+              <div className="flex flex-col gap-3">
+                <Link
+                  to="/volunteer-signin"
+                  className="w-full bg-red-500 hover:bg-red-600 text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200 text-center"
+                >
+                  Go to Volunteer Sign In
+                </Link>
+                <Link
+                  to="/"
+                  className="w-full bg-gray-800 hover:bg-gray-700 text-white/70 font-medium py-3 px-4 rounded-lg transition-colors duration-200 text-center text-sm"
+                >
+                  Back to Home
+                </Link>
+              </div>
             </div>
           )}
 
@@ -515,12 +551,14 @@ export default function VolunteerApplication() {
             </form>
           )}
 
-          <p className="text-center mt-6 text-white/70 text-sm">
-            Already have an account?{" "}
-            <Link to="/volunteer-signin" className="text-red-500 hover:text-red-400 font-medium">
-              Sign in
-            </Link>
-          </p>
+          {step !== "submitted" && (
+            <p className="text-center mt-6 text-white/70 text-sm">
+              Already have an account?{" "}
+              <Link to="/volunteer-signin" className="text-red-500 hover:text-red-400 font-medium">
+                Sign in
+              </Link>
+            </p>
+          )}
         </div>
       </main>
 

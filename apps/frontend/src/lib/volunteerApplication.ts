@@ -22,14 +22,14 @@ export type SubmitApplicationBody = {
 };
 
 export async function getAgencies(): Promise<Agency[]> {
-  const res = await fetch(`${API_BASE}/agencies`);
+  const res = await authFetch(`${API_BASE}/agencies`);
   if (!res.ok) throw new Error("Failed to load agencies");
   const json = await res.json();
   return json?.data?.agencies ?? [];
 }
 
 export async function getSkills(): Promise<Skill[]> {
-  const res = await fetch(`${API_BASE}/skills`);
+  const res = await authFetch(`${API_BASE}/skills`);
   if (!res.ok) throw new Error("Failed to load skills");
   const json = await res.json();
   return json?.data?.skills ?? [];
@@ -65,4 +65,27 @@ export async function getMyApplications(): Promise<
   }
   const data = json?.data;
   return Array.isArray(data) ? data : data?.applications ?? [];
+}
+
+export async function getApplicationDetail(
+  applicationId: string,
+): Promise<Record<string, unknown> | null> {
+  const res = await authFetch(`${API_BASE}/applications/${applicationId}`);
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json?.data ?? null;
+}
+
+export async function withdrawApplication(
+  applicationId: string,
+): Promise<void> {
+  const res = await authFetch(`${API_BASE}/applications/${applicationId}/withdraw`, {
+    method: "PATCH",
+  });
+  if (!res.ok) {
+    const json = await res.json().catch(() => null);
+    throw new Error(
+      json?.error?.message ?? "Failed to withdraw application",
+    );
+  }
 }

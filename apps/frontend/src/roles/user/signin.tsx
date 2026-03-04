@@ -6,14 +6,21 @@ import { API_BASE, setAuthTokens, setCurrentUser } from "../../lib/api";
 import { useGoogleAuth } from "../../hooks/useGoogleAuth";
 
 const VOLUNTEER_SIGNIN_PATH = "/volunteer-signin";
+const ADMIN_SIGNIN_PATH = "/admin-signin";
 const VOLUNTEER_REDIRECT = "/volunteer-dashboard";
+const ADMIN_REDIRECT = "/admin-dashboard";
 const USER_REDIRECT = "/choosehelp";
 
 function Signin() {
   const navigate = useNavigate();
   const location = useLocation();
   const isVolunteerSignin = location.pathname === VOLUNTEER_SIGNIN_PATH;
-  const successRedirect = isVolunteerSignin ? VOLUNTEER_REDIRECT : USER_REDIRECT;
+  const isAdminSignin = location.pathname === ADMIN_SIGNIN_PATH;
+  const successRedirect = isAdminSignin
+    ? ADMIN_REDIRECT
+    : isVolunteerSignin
+      ? VOLUNTEER_REDIRECT
+      : USER_REDIRECT;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [apiError, setApiError] = useState("");
@@ -52,13 +59,32 @@ function Signin() {
 
       const payload = json?.data;
       const user = payload?.user;
+      const userRole = user?.role ?? "CIVILIAN";
       const hasVolunteerProfile = user?.hasVolunteerProfile === true;
 
-      // Volunteer sign-in: only allow users who have a volunteer profile in DB.
-      if (isVolunteerSignin) {
-        if (!hasVolunteerProfile) {
+      // Admin sign-in: only allow ADMIN / SUPERADMIN roles.
+      if (isAdminSignin) {
+        if (userRole !== "ADMIN" && userRole !== "SUPERADMIN") {
           setApiError(
-            "Invalid. This account is not registered as a volunteer. Sign in as a user or apply to become a volunteer.",
+            "Access denied. This account does not have admin privileges.",
+          );
+          return;
+        }
+        setAuthTokens(payload ?? {});
+        setCurrentUser(user ?? null);
+        navigate(ADMIN_REDIRECT, { replace: true });
+        return;
+      }
+
+      // Volunteer sign-in: require actual VOLUNTEER role (approved by admin).
+      // CIVILIAN users who submitted an application (hasVolunteerProfile) but
+      // haven't been approved yet cannot access the volunteer dashboard.
+      if (isVolunteerSignin) {
+        if (userRole !== "VOLUNTEER") {
+          setApiError(
+            hasVolunteerProfile
+              ? "Your volunteer application is still under review. You'll be able to sign in once approved."
+              : "This account is not registered as a volunteer. Sign in as a user or apply to become a volunteer.",
           );
           return;
         }
@@ -68,14 +94,26 @@ function Signin() {
         return;
       }
 
-      // User sign-in: log in and send volunteers to dashboard, others to choosehelp.
+      // Auto-route admins to admin dashboard even from user sign-in.
+      if (userRole === "ADMIN" || userRole === "SUPERADMIN") {
+        setAuthTokens(payload ?? {});
+        setCurrentUser(user ?? null);
+        navigate(ADMIN_REDIRECT, { replace: true });
+        return;
+      }
+
+      // Auto-route approved volunteers to volunteer dashboard.
+      if (userRole === "VOLUNTEER") {
+        setAuthTokens(payload ?? {});
+        setCurrentUser(user ?? null);
+        navigate(VOLUNTEER_REDIRECT, { replace: true });
+        return;
+      }
+
+      // Regular civilian user sign-in → proceed to user flow.
       setAuthTokens(payload ?? {});
       setCurrentUser(user ?? null);
-      if (hasVolunteerProfile) {
-        navigate(VOLUNTEER_REDIRECT, { replace: true });
-      } else {
-        navigate(USER_REDIRECT, { replace: true });
-      }
+      navigate(USER_REDIRECT, { replace: true });
     } catch (err) {
       setApiError("Network error. Please check your connection and try again.");
     } finally {
@@ -99,9 +137,17 @@ function Signin() {
           return;
         }
         const payload = json?.data;
+        const gUser = payload?.user;
+        const gRole = gUser?.role ?? "CIVILIAN";
         setAuthTokens(payload ?? {});
-        setCurrentUser(payload?.user ?? null);
-        navigate(successRedirect, { replace: true });
+        setCurrentUser(gUser ?? null);
+        const dest =
+          gRole === "ADMIN" || gRole === "SUPERADMIN"
+            ? ADMIN_REDIRECT
+            : gRole === "VOLUNTEER"
+              ? VOLUNTEER_REDIRECT
+              : successRedirect;
+        navigate(dest, { replace: true });
       } catch {
         setApiError("Network error. Please try again.");
       } finally {
@@ -116,7 +162,7 @@ function Signin() {
       {/* Back Arrow Button - Under Logo */}
       <div className="px-6 pt-6 pb-2">
         <button
-          onClick={() => (isVolunteerSignin ? navigate(-1) : navigate("/"))}
+          onClick={() => (isVolunteerSignin || isAdminSignin ? navigate(-1) : navigate("/"))}
           className="flex items-center gap-2 text-white/70 hover:text-white transition-colors duration-200"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -139,10 +185,14 @@ function Signin() {
 
           {/* Title */}
           <h1 className="text-white text-3xl font-bold text-center mb-2">
-            {isVolunteerSignin ? "Volunteer Sign In" : "Welcome Back"}
+            {isAdminSignin ? "Admin Sign In" : isVolunteerSignin ? "Volunteer Sign In" : "Welcome Back"}
           </h1>
           <p className="text-white/70 text-sm text-center mb-8">
-            {isVolunteerSignin ? "Sign in to help your community" : "Sign in to continue to your account"}
+            {isAdminSignin
+              ? "Sign in to access the admin panel"
+              : isVolunteerSignin
+                ? "Sign in to help your community"
+                : "Sign in to continue to your account"}
           </p>
 
           {/* Form */}
@@ -239,7 +289,7 @@ function Signin() {
             </button>
           </form>
 
-          {!isVolunteerSignin && (
+          {!isVolunteerSignin && !isAdminSignin && (
             <>
               {/* Divider */}
               <div className="relative my-6">
@@ -273,7 +323,14 @@ function Signin() {
 
           {/* Sign Up / Switch role link */}
           <p className="text-center mt-6 text-white/70 text-sm">
-            {isVolunteerSignin ? (
+            {isAdminSignin ? (
+              <>
+                Not an admin?{" "}
+                <Link to="/signin" className="text-blue-400 hover:text-blue-300 font-medium">
+                  Sign in as user
+                </Link>
+              </>
+            ) : isVolunteerSignin ? (
               <>
                 Don't have an account?{" "}
                 <Link to="/volunteer-apply" className="text-red-500 hover:text-red-400 font-medium">

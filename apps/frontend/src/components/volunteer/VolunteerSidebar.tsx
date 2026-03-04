@@ -1,15 +1,10 @@
+import { useState, useEffect } from "react";
 import { NavLink, useNavigate, Link } from "react-router-dom";
-import {
-  LayoutDashboard,
-  ClipboardCheck,
-  ShieldCheck,
-  User,
-  Circle,
-  LogOut,
-  LogIn,
-} from "lucide-react";
+import { LayoutDashboard, ShieldCheck, User, LogOut, LogIn, Radio, History, Users, BarChart3, Building2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { clearAuthTokens, getAccessToken } from "@/lib/api";
+import { API_BASE, clearAuthTokens, getAccessToken, getRefreshToken, authFetch } from "@/lib/api";
+import { updateAvailability } from "@/lib/volunteerProfile";
+import { NotificationBell } from "./NotificationPanel";
 
 const dashboardItem = {
   to: "/volunteer-dashboard",
@@ -18,19 +13,62 @@ const dashboardItem = {
   icon: LayoutDashboard,
 } as const;
 
+const LEADERSHIP_ONLY = new Set(["/volunteer-dashboard/team", "/volunteer-dashboard/agency", "/volunteer-dashboard/analytics"]);
+
 const protectedNavItems = [
-  { to: "/volunteer-dashboard/missions", end: false, label: "Missions", icon: ClipboardCheck },
+  { to: "/volunteer-dashboard/missions", end: false, label: "Missions", icon: Radio },
+  { to: "/volunteer-dashboard/mission-history", end: false, label: "History", icon: History },
   { to: "/volunteer-dashboard/validation", end: false, label: "Validation", icon: ShieldCheck },
+  { to: "/volunteer-dashboard/team", end: false, label: "Team", icon: Users },
+  { to: "/volunteer-dashboard/analytics", end: false, label: "Analytics", icon: BarChart3 },
+  { to: "/volunteer-dashboard/agency", end: false, label: "Agency", icon: Building2 },
   { to: "/volunteer-dashboard/profile", end: false, label: "Profile", icon: User },
 ] as const;
 
 export function VolunteerSidebar() {
   const navigate = useNavigate();
   const isSignedIn = !!getAccessToken();
+  const [isLeadership, setIsLeadership] = useState(false);
 
-  const handleLogout = () => {
+  useEffect(() => {
+    if (!isSignedIn) return;
+    let cancelled = false;
+    authFetch(`${API_BASE}/auth/me`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (cancelled) return;
+        const memberships = json?.data?.agencyMemberships as Array<{ role: string }> | undefined;
+        if (!memberships?.length) { setIsLeadership(false); return; }
+        setIsLeadership(memberships.some((m) => m.role === "COORDINATOR" || m.role === "DIRECTOR"));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [isSignedIn]);
+
+  const handleLogout = async () => {
+    if (isSignedIn) {
+      try {
+        await updateAvailability({ isAvailable: false });
+      } catch {
+        /* best-effort */
+      }
+
+      const refreshToken = getRefreshToken();
+      if (refreshToken) {
+        try {
+          await authFetch(`${API_BASE}/auth/signout`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ refreshToken }),
+          }, false);
+        } catch {
+          /* best-effort */
+        }
+      }
+    }
+
     clearAuthTokens();
-    navigate(-1);
+    navigate("/volunteer-signin", { replace: true });
   };
 
   return (
@@ -95,7 +133,9 @@ export function VolunteerSidebar() {
           <span>{dashboardItem.label}</span>
         </NavLink>
         {isSignedIn &&
-          protectedNavItems.map(({ to, end, label, icon: Icon }) => (
+          protectedNavItems
+          .filter((item) => !LEADERSHIP_ONLY.has(item.to) || isLeadership)
+          .map(({ to, end, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
@@ -115,8 +155,14 @@ export function VolunteerSidebar() {
           ))}
       </nav>
 
-      {/* System status + Logout / Sign in */}
+      {/* Notifications + Logout / Sign in */}
       <div className="p-4 border-t border-gray-800 space-y-2">
+        {isSignedIn && (
+          <div className="flex items-center justify-between px-1 pb-2">
+            <span className="text-white/40 text-[10px] font-semibold tracking-widest">ALERTS</span>
+            <NotificationBell />
+          </div>
+        )}
         {isSignedIn ? (
           <button
             type="button"

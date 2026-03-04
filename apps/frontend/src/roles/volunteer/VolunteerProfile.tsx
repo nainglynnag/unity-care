@@ -6,13 +6,23 @@ import {
   Award,
   Wrench,
   Loader2,
+  Pencil,
+  Check,
+  X,
 } from "lucide-react";
-import { getCurrentUser } from "../../lib/api";
+import { getCurrentUser, setCurrentUser } from "../../lib/api";
 import {
   getVolunteerProfile,
   updateAvailability,
+  updateVolunteerProfile,
   type VolunteerProfile as VolunteerProfileType,
 } from "../../lib/volunteerProfile";
+import {
+  getMyAgencyMembership,
+  type AgencyMembership,
+} from "../../lib/agencyTeam";
+import { updateProfile } from "../../lib/account";
+import { getSkills, type Skill } from "../../lib/referenceData";
 
 const DAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"] as const;
 const SLOTS = ["AM", "PM"] as const;
@@ -27,6 +37,16 @@ const MOCK_AVAILABILITY: Record<string, { AM: boolean; PM: boolean }> = {
   SAT: { AM: false, PM: false },
   SUN: { AM: false, PM: false },
 };
+
+const ROLE_LABELS: Record<string, string> = {
+  DIRECTOR: "Director",
+  COORDINATOR: "Coordinator",
+  MEMBER: "Volunteer",
+};
+
+function getRoleLabel(role: string) {
+  return ROLE_LABELS[role] ?? role;
+}
 
 function getInitials(name?: string) {
   if (!name) return "?";
@@ -45,8 +65,22 @@ export default function VolunteerProfile() {
   const [availabilityUpdating, setAvailabilityUpdating] = useState(false);
   const [lastLocationLabel, setLastLocationLabel] = useState<string | null>(null);
   const [lastLocationLoading, setLastLocationLoading] = useState(false);
+  const [membership, setMembership] = useState<AgencyMembership | null>(null);
 
-  const user = getCurrentUser();
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState("");
+  const [nameSaving, setNameSaving] = useState(false);
+
+  const [editingRadius, setEditingRadius] = useState(false);
+  const [radiusInput, setRadiusInput] = useState("");
+  const [radiusSaving, setRadiusSaving] = useState(false);
+
+  const [editingSkills, setEditingSkills] = useState(false);
+  const [allSkills, setAllSkills] = useState<Skill[]>([]);
+  const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
+  const [skillsSaving, setSkillsSaving] = useState(false);
+
+  const [user, setUser] = useState(getCurrentUser());
   const displayName = user?.name ?? "Volunteer";
   const initials = getInitials(displayName);
 
@@ -63,6 +97,9 @@ export default function VolunteerProfile() {
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
+    getMyAgencyMembership().then((m) => {
+      if (!cancelled) setMembership(m);
+    });
     return () => {
       cancelled = true;
     };
@@ -144,6 +181,83 @@ export default function VolunteerProfile() {
     }
   };
 
+  const handleSaveName = async () => {
+    const trimmed = nameInput.trim();
+    if (!trimmed || trimmed === displayName) {
+      setEditingName(false);
+      return;
+    }
+    setNameSaving(true);
+    setError("");
+    try {
+      const updated = await updateProfile({ name: trimmed });
+      const prev = getCurrentUser();
+      const next = { ...prev, name: updated.name };
+      setCurrentUser(next);
+      setUser(next);
+      setEditingName(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update name");
+    } finally {
+      setNameSaving(false);
+    }
+  };
+
+  const handleStartEditRadius = () => {
+    setRadiusInput(String(profile?.availabilityRadiusKm ?? ""));
+    setEditingRadius(true);
+  };
+
+  const handleSaveRadius = async () => {
+    const num = Number(radiusInput);
+    if (!radiusInput || isNaN(num) || num <= 0) {
+      setEditingRadius(false);
+      return;
+    }
+    setRadiusSaving(true);
+    setError("");
+    try {
+      const updated = await updateVolunteerProfile({ availabilityRadiusKm: num });
+      setProfile(updated);
+      setEditingRadius(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update radius");
+    } finally {
+      setRadiusSaving(false);
+    }
+  };
+
+  const handleStartEditSkills = async () => {
+    if (allSkills.length === 0) {
+      const skills = await getSkills();
+      setAllSkills(skills.filter((s) => s.isActive));
+    }
+    setSelectedSkillIds(
+      profile?.skills?.map((s) => s.skill?.id).filter(Boolean) as string[] ?? [],
+    );
+    setEditingSkills(true);
+  };
+
+  const toggleSkill = (id: string) => {
+    setSelectedSkillIds((prev) =>
+      prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id],
+    );
+  };
+
+  const handleSaveSkills = async () => {
+    setSkillsSaving(true);
+    setError("");
+    try {
+      const updated = await updateVolunteerProfile({ skillIds: selectedSkillIds });
+      setProfile(updated);
+      setEditingSkills(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update skills");
+    } finally {
+      setSkillsSaving(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="p-6 flex items-center justify-center min-h-[300px]">
@@ -181,7 +295,9 @@ export default function VolunteerProfile() {
           <div className="flex items-center gap-2 pl-2 border-l border-gray-700">
             <div className="text-right hidden sm:block">
               <p className="text-white font-medium text-sm">{displayName}</p>
-              <p className="text-red-500 text-xs font-medium">VOLUNTEER</p>
+              <p className="text-red-500 text-xs font-medium">
+                {membership ? `${getRoleLabel(membership.myRole)} — ${membership.agencyName}` : "Volunteer"}
+              </p>
             </div>
             <div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center shrink-0 border-2 border-red-500/30">
               <span className="text-white text-sm font-semibold">{initials}</span>
@@ -217,12 +333,107 @@ export default function VolunteerProfile() {
                     {profile?.isAvailable ? "STATUS: ACTIVE / ON-CALL" : "STATUS: OFFLINE"}
                   </span>
                 </div>
-                <h2 className="text-white text-2xl font-bold mb-1">{displayName}</h2>
-                <p className="text-white/70 text-sm">
-                  {profile?.availabilityRadiusKm != null
-                    ? `Availability radius: ${profile.availabilityRadiusKm} km`
-                    : "Volunteer"}
-                </p>
+                <div className="flex items-center gap-2 mb-1">
+                  {editingName ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={nameInput}
+                        onChange={(e) => setNameInput(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleSaveName()}
+                        className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white text-lg font-bold focus:outline-none focus:border-red-500 w-48"
+                        autoFocus
+                        disabled={nameSaving}
+                      />
+                      {nameSaving ? (
+                        <Loader2 className="w-4 h-4 animate-spin text-red-500" />
+                      ) : (
+                        <>
+                          <button type="button" onClick={handleSaveName} className="text-emerald-400 hover:text-emerald-300">
+                            <Check className="w-4 h-4" />
+                          </button>
+                          <button type="button" onClick={() => setEditingName(false)} className="text-white/40 hover:text-white/70">
+                            <X className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    <>
+                      <h2 className="text-white text-2xl font-bold">{displayName}</h2>
+                      <button
+                        type="button"
+                        onClick={() => { setNameInput(displayName); setEditingName(true); }}
+                        className="text-white/30 hover:text-white/70 transition-colors"
+                        title="Edit name"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                    </>
+                  )}
+                </div>
+                {membership && (
+                  <div className="flex items-center gap-2 mb-1">
+                    <span
+                      className={`inline-block px-2.5 py-0.5 rounded text-xs font-bold uppercase tracking-wider ${
+                        membership.myRole === "DIRECTOR"
+                          ? "bg-purple-500/20 text-purple-400"
+                          : membership.myRole === "COORDINATOR"
+                            ? "bg-blue-500/20 text-blue-400"
+                            : "bg-red-500/20 text-red-400"
+                      }`}
+                    >
+                      {getRoleLabel(membership.myRole)}
+                    </span>
+                    <span className="text-white/50 text-xs">{membership.agencyName}</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-2 text-white/70 text-sm">
+                  {editingRadius ? (
+                    <div className="flex items-center gap-2">
+                      <span>Radius:</span>
+                      <input
+                        type="number"
+                        min="1"
+                        value={radiusInput}
+                        onChange={(e) => setRadiusInput(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleSaveRadius()}
+                        className="bg-gray-700 border border-gray-600 rounded px-2 py-0.5 text-white text-sm focus:outline-none focus:border-red-500 w-20"
+                        autoFocus
+                        disabled={radiusSaving}
+                      />
+                      <span>km</span>
+                      {radiusSaving ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-red-500" />
+                      ) : (
+                        <>
+                          <button type="button" onClick={handleSaveRadius} className="text-emerald-400 hover:text-emerald-300">
+                            <Check className="w-3.5 h-3.5" />
+                          </button>
+                          <button type="button" onClick={() => setEditingRadius(false)} className="text-white/40 hover:text-white/70">
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    <>
+                      <span>
+                        {profile?.availabilityRadiusKm != null
+                          ? `Availability radius: ${profile.availabilityRadiusKm} km`
+                          : "Volunteer"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleStartEditRadius}
+                        className="text-white/30 hover:text-white/70 transition-colors"
+                        title="Edit radius"
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                    </>
+                  )}
+                </div>
                 {profile?.lastKnownLatitude != null &&
                   profile?.lastKnownLongitude != null && (
                     <p className="text-white/50 text-xs mt-1">
@@ -235,18 +446,68 @@ export default function VolunteerProfile() {
                           )}, ${profile.lastKnownLongitude.toFixed(5)}`}
                     </p>
                   )}
-                {skills.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-3">
-                    {skills.map((name) => (
-                      <span
-                        key={name}
-                        className="px-2.5 py-1 bg-gray-700 text-white/90 text-xs font-medium rounded-md"
+                <div className="mt-3">
+                  {editingSkills ? (
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap gap-2">
+                        {allSkills.map((s) => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => toggleSkill(s.id)}
+                            disabled={skillsSaving}
+                            className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                              selectedSkillIds.includes(s.id)
+                                ? "bg-red-500/30 text-red-300 border border-red-500/50"
+                                : "bg-gray-700 text-white/50 border border-transparent hover:text-white/80"
+                            }`}
+                          >
+                            {s.name}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {skillsSaving ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-red-500" />
+                        ) : (
+                          <>
+                            <button type="button" onClick={handleSaveSkills} className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1">
+                              <Check className="w-3.5 h-3.5" /> Save
+                            </button>
+                            <button type="button" onClick={() => setEditingSkills(false)} className="text-xs text-white/40 hover:text-white/70 flex items-center gap-1">
+                              <X className="w-3.5 h-3.5" /> Cancel
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap gap-2">
+                        {skills.length > 0 ? (
+                          skills.map((name) => (
+                            <span
+                              key={name}
+                              className="px-2.5 py-1 bg-gray-700 text-white/90 text-xs font-medium rounded-md"
+                            >
+                              {name}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-white/30 text-xs">No skills</span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleStartEditSkills}
+                        className="text-white/30 hover:text-white/70 transition-colors shrink-0"
+                        title="Edit skills"
                       >
-                        {name}
-                      </span>
-                    ))}
-                  </div>
-                )}
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                    </div>
+                  )}
+                </div>
                 <div className="flex items-center gap-2 mt-3">
                   {availabilityUpdating ? (
                     <Loader2 className="w-3.5 h-3.5 animate-spin text-red-500" />
@@ -345,6 +606,19 @@ export default function VolunteerProfile() {
               <span className="text-lg font-medium text-white/90">{initials}</span>
             </div>
             <p className="text-white font-medium mt-3 text-center">{displayName}</p>
+            {membership && (
+              <span
+                className={`mt-1.5 inline-block px-2.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                  membership.myRole === "DIRECTOR"
+                    ? "bg-purple-500/20 text-purple-400"
+                    : membership.myRole === "COORDINATOR"
+                      ? "bg-blue-500/20 text-blue-400"
+                      : "bg-red-500/20 text-red-400"
+                }`}
+              >
+                {getRoleLabel(membership.myRole)}
+              </span>
+            )}
           </div>
 
           {/* Mission Impact (placeholder; no backend stats yet) */}

@@ -1,0 +1,98 @@
+import { NavLink, useNavigate } from "react-router-dom";
+import {
+  LayoutDashboard,
+  Users,
+  FileCheck,
+  UserCog,
+  LogOut,
+  Shield,
+  Database,
+  BarChart3,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { API_BASE, authFetch, clearAuthTokens, getRefreshToken, getCurrentUser } from "@/lib/api";
+
+const baseNavItems = [
+  { to: "/admin-dashboard", end: true, label: "Overview", icon: LayoutDashboard, superadminOnly: false },
+  { to: "/admin-dashboard/users", end: false, label: "Users", icon: Users, superadminOnly: true },
+  { to: "/admin-dashboard/applications", end: false, label: "Applications", icon: FileCheck, superadminOnly: false },
+  { to: "/admin-dashboard/volunteer-roles", end: false, label: "Volunteer Roles", icon: UserCog, superadminOnly: true },
+  { to: "/admin-dashboard/reference-data", end: false, label: "Reference Data", icon: Database, superadminOnly: true },
+  { to: "/admin-dashboard/analytics", end: false, label: "Analytics", icon: BarChart3, superadminOnly: false },
+] as const;
+
+export function AdminSidebar() {
+  const navigate = useNavigate();
+  const user = getCurrentUser();
+
+  const handleLogout = async () => {
+    const refreshToken = getRefreshToken();
+    if (refreshToken) {
+      try {
+        await authFetch(`${API_BASE}/auth/signout`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refreshToken }),
+        }, false);
+      } catch {
+        /* best-effort */
+      }
+    }
+    clearAuthTokens();
+    navigate("/admin-signin", { replace: true });
+  };
+
+  return (
+    <aside className="w-56 min-h-screen bg-gray-900 border-r border-gray-800 flex flex-col">
+      <div className="p-5 border-b border-gray-800">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 flex items-center justify-center">
+            <Shield className="w-6 h-6 text-blue-500" />
+          </div>
+          <span className="text-white text-xl font-bold">Unity Care</span>
+        </div>
+        <p className="text-white/60 text-xs font-medium mt-2 tracking-wider">
+          {user?.role === "SUPERADMIN" ? "SUPER ADMIN" : "ADMIN PANEL"}
+        </p>
+      </div>
+
+      <nav className="flex-1 py-4 px-3 space-y-0.5">
+        {baseNavItems.filter((item) => !item.superadminOnly || user?.role === "SUPERADMIN").map(({ to, end, label, icon: Icon }) => (
+          <NavLink
+            key={to}
+            to={to}
+            end={end}
+            className={({ isActive }) =>
+              cn(
+                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+                isActive
+                  ? "bg-blue-500/20 text-blue-400"
+                  : "text-white/70 hover:text-white hover:bg-gray-800",
+              )
+            }
+          >
+            <Icon className="w-5 h-5 shrink-0" />
+            <span>{label}</span>
+          </NavLink>
+        ))}
+      </nav>
+
+      <div className="p-4 border-t border-gray-800 space-y-3">
+        {user && (
+          <div className="px-2">
+            <p className="text-white text-sm font-medium truncate">{user.name}</p>
+            <p className="text-white/40 text-xs truncate">{user.email}</p>
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 text-sm font-semibold transition-colors"
+        >
+          <LogOut className="w-4 h-4" />
+          LOGOUT
+        </button>
+      </div>
+    </aside>
+  );
+}

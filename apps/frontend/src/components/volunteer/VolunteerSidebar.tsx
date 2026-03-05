@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { NavLink, useNavigate, Link } from "react-router-dom";
-import { LayoutDashboard, ShieldCheck, User, LogOut, LogIn, Radio, History, Users, BarChart3, Building2 } from "lucide-react";
+import { LayoutDashboard, ShieldCheck, User, LogOut, LogIn, Radio, History, Users, BarChart3 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { API_BASE, clearAuthTokens, getAccessToken, getRefreshToken, authFetch } from "@/lib/api";
 import { updateAvailability } from "@/lib/volunteerProfile";
@@ -13,7 +13,7 @@ const dashboardItem = {
   icon: LayoutDashboard,
 } as const;
 
-const LEADERSHIP_ONLY = new Set(["/volunteer-dashboard/team", "/volunteer-dashboard/agency", "/volunteer-dashboard/analytics"]);
+const LEADERSHIP_ONLY = new Set(["/volunteer-dashboard/analytics"]);
 
 const protectedNavItems = [
   { to: "/volunteer-dashboard/missions", end: false, label: "Missions", icon: Radio },
@@ -21,7 +21,6 @@ const protectedNavItems = [
   { to: "/volunteer-dashboard/validation", end: false, label: "Validation", icon: ShieldCheck },
   { to: "/volunteer-dashboard/team", end: false, label: "Team", icon: Users },
   { to: "/volunteer-dashboard/analytics", end: false, label: "Analytics", icon: BarChart3 },
-  { to: "/volunteer-dashboard/agency", end: false, label: "Agency", icon: Building2 },
   { to: "/volunteer-dashboard/profile", end: false, label: "Profile", icon: User },
 ] as const;
 

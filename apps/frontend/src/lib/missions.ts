@@ -89,6 +89,72 @@ export async function getAssignedMissions(): Promise<AssignedMission[]> {
   return Array.isArray(data) ? (data as AssignedMission[]) : [];
 }
 
+/**
+ * Returns the set of incident IDs that are the primary incident of a mission
+ * with status COMPLETED or CLOSED (current user's assigned missions only).
+ * Used by the frontend to hide these incidents from the validation list and map.
+ */
+export async function getCompletedMissionPrimaryIncidentIds(): Promise<Set<string>> {
+  const ids = new Set<string>();
+  try {
+    const [completed, closed] = await Promise.all([
+      listAssignedMissions({ status: "COMPLETED", perPage: 100, page: 1 }),
+      listAssignedMissions({ status: "CLOSED", perPage: 100, page: 1 }),
+    ]);
+    for (const m of [...completed.missions, ...closed.missions]) {
+      if (m.primaryIncident?.id) ids.add(m.primaryIncident.id);
+    }
+  } catch {
+    // ignore; return empty set
+  }
+  return ids;
+}
+
+/**
+ * Returns the set of incident IDs that are the primary incident of a mission
+ * with status COMPLETED or CLOSED for the given agency (all team missions).
+ * Used so the whole team sees the same "completed" set and validation hides
+ * incidents that any team member's mission completed.
+ */
+export async function getAgencyCompletedMissionPrimaryIncidentIds(
+  agencyId: string,
+): Promise<Set<string>> {
+  const ids = new Set<string>();
+  try {
+    const [completed, closed] = await Promise.all([
+      listMissions({ agencyId, status: "COMPLETED", perPage: 100, page: 1 }),
+      listMissions({ agencyId, status: "CLOSED", perPage: 100, page: 1 }),
+    ]);
+    for (const m of [...completed.missions, ...closed.missions]) {
+      if (m.primaryIncident?.id) ids.add(m.primaryIncident.id);
+    }
+  } catch {
+    // ignore; return empty set
+  }
+  return ids;
+}
+
+/**
+ * Returns the set of incident IDs that are the primary incident of ANY mission
+ * for the given agency (any status: ASSIGNED, ACCEPTED, EN_ROUTE, etc.).
+ * Used so that once a mission is created for an incident, it disappears from
+ * the validation "Create Mission" list and the left card no longer shows it.
+ */
+export async function getAgencyMissionPrimaryIncidentIds(
+  agencyId: string,
+): Promise<Set<string>> {
+  const ids = new Set<string>();
+  try {
+    const result = await listMissions({ agencyId, perPage: 100, page: 1 });
+    for (const m of result.missions) {
+      if (m.primaryIncident?.id) ids.add(m.primaryIncident.id);
+    }
+  } catch {
+    // ignore; return empty set
+  }
+  return ids;
+}
+
 export async function listAssignedMissions(params?: {
   status?: string;
   page?: number;
@@ -167,9 +233,9 @@ async function missionAction(
   });
   if (!res.ok) {
     const json = await res.json().catch(() => null);
-    throw new Error(
-      json?.error?.message ?? json?.meta?.message ?? `Failed: ${action}`,
-    );
+    const msg = json?.error?.message ?? json?.meta?.message ?? `Failed: ${action}`;
+    const details = json?.error?.details;
+    throw new Error(Array.isArray(details) && details.length > 0 ? `${msg}: ${details.map((d: { message?: string }) => d?.message ?? d).join("; ")}` : msg);
   }
 }
 
@@ -224,6 +290,7 @@ export async function reportFailure(
   });
 }
 
+/** Create mission payload: exactly one LEADER required in volunteers (per mission.validator). */
 export async function createMission(data: {
   primaryIncidentId: string;
   linkedIncidentIds?: string[];
@@ -238,7 +305,9 @@ export async function createMission(data: {
   });
   const json = await res.json();
   if (!res.ok) {
-    throw new Error(json?.error?.message ?? "Failed to create mission");
+    const msg = json?.error?.message ?? "Failed to create mission";
+    const details = json?.error?.details;
+    throw new Error(Array.isArray(details) && details.length > 0 ? `${msg}: ${details.map((d: { message?: string }) => d?.message ?? d).join("; ")}` : msg);
   }
   return json?.data ?? json;
 }

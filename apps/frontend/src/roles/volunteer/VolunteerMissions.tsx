@@ -292,6 +292,7 @@ export default function VolunteerMissions() {
   }, []);
 
   const isLeadership = myAgencyRole === "DIRECTOR" || myAgencyRole === "COORDINATOR";
+  const isMember = myAgencyRole === "MEMBER";
 
   const fetchMission = useCallback(async () => {
     try {
@@ -597,11 +598,12 @@ export default function VolunteerMissions() {
   const phaseIndex = statusToPhaseIndex(mission.status);
   const isAssigned = mission.status === "ASSIGNED";
   const canAdvancePhase = ["ACCEPTED", "EN_ROUTE", "ON_SITE", "IN_PROGRESS"].includes(mission.status);
-  const mapCenter: [number, number] = incident
-    ? [incident.longitude, incident.latitude]
-    : [-118.2437, 34.0522];
+  const mapCenter: [number, number] =
+    incident && incident.longitude != null && incident.latitude != null
+      ? [incident.longitude, incident.latitude]
+      : [-118.2437, 34.0522];
   const distanceKm =
-    userLocation && incident
+    userLocation && incident && incident.latitude != null && incident.longitude != null
       ? haversineKm(userLocation.lat, userLocation.lng, incident.latitude, incident.longitude)
       : null;
 
@@ -645,35 +647,41 @@ export default function VolunteerMissions() {
                 )}
               </div>
               <div className="px-6 pb-6 space-y-3">
-                {showRejectInput && (
-                  <textarea
-                    className="w-full rounded-lg bg-gray-800 border border-gray-700 text-white text-sm px-3 py-2 min-h-[60px] focus:outline-none focus:border-red-500"
-                    placeholder="Reason for declining (min 5 characters)..."
-                    value={rejectNote}
-                    onChange={(e) => setRejectNote(e.target.value)}
-                  />
+                {isMember ? (
+                  <p className="text-white/40 text-xs text-center py-3">View only — accepting missions requires Coordinator or Director role.</p>
+                ) : (
+                  <>
+                    {showRejectInput && (
+                      <textarea
+                        className="w-full rounded-lg bg-gray-800 border border-gray-700 text-white text-sm px-3 py-2 min-h-[60px] focus:outline-none focus:border-red-500"
+                        placeholder="Reason for declining (min 5 characters)..."
+                        value={rejectNote}
+                        onChange={(e) => setRejectNote(e.target.value)}
+                      />
+                    )}
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        onClick={handleAccept}
+                        disabled={actionLoading}
+                        className="flex-1 py-3.5 rounded-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-black flex items-center justify-center gap-2"
+                      >
+                        {actionLoading && !showRejectInput && <Loader2 className="w-4 h-4 animate-spin" />}
+                        <Check className="w-4 h-4" />
+                        ACCEPT MISSION
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleReject}
+                        disabled={actionLoading}
+                        className="flex-1 py-3.5 rounded-full bg-red-600/80 hover:bg-red-700 disabled:opacity-50 text-white text-sm font-black flex items-center justify-center gap-2"
+                      >
+                        {actionLoading && showRejectInput && <Loader2 className="w-4 h-4 animate-spin" />}
+                        DECLINE
+                      </button>
+                    </div>
+                  </>
                 )}
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={handleAccept}
-                    disabled={actionLoading}
-                    className="flex-1 py-3.5 rounded-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-black flex items-center justify-center gap-2"
-                  >
-                    {actionLoading && !showRejectInput && <Loader2 className="w-4 h-4 animate-spin" />}
-                    <Check className="w-4 h-4" />
-                    ACCEPT MISSION
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleReject}
-                    disabled={actionLoading}
-                    className="flex-1 py-3.5 rounded-full bg-red-600/80 hover:bg-red-700 disabled:opacity-50 text-white text-sm font-black flex items-center justify-center gap-2"
-                  >
-                    {actionLoading && showRejectInput && <Loader2 className="w-4 h-4 animate-spin" />}
-                    DECLINE
-                  </button>
-                </div>
               </div>
             </div>
           </div>
@@ -684,6 +692,18 @@ export default function VolunteerMissions() {
 
   const tracking: MissionTrackingPoint[] = mission.tracking ?? [];
   const assignments: MissionAssignment[] = mission.assignments ?? [];
+  const trackingPointsToShow = (() => {
+    const list = latestTracking.length > 0 ? latestTracking : tracking.slice(-20);
+    const byVolunteer = new Map<string, MissionTrackingPoint>();
+    for (const t of list) {
+      const vid = t.volunteer?.id ?? "unknown";
+      const existing = byVolunteer.get(vid);
+      if (!existing || new Date(t.recordedAt) > new Date(existing.recordedAt)) {
+        byVolunteer.set(vid, t);
+      }
+    }
+    return Array.from(byVolunteer.values());
+  })();
 
   return (
     <div className="h-full flex flex-col bg-gray-950 text-white">
@@ -775,30 +795,48 @@ export default function VolunteerMissions() {
         <div className="flex-1 flex flex-col min-w-0 border-r border-gray-800">
           <div className="flex-1 min-h-[240px] relative bg-gray-900">
             <MapcnMap theme="dark" className="h-full w-full" viewport={{ center: mapCenter, zoom: 14 }}>
-              {incident && (
+              {incident && incident.latitude != null && incident.longitude != null && (
                 <MapMarker longitude={incident.longitude} latitude={incident.latitude}>
                   <MarkerContent>
                     <div className="flex flex-col items-center">
-                      <div className="px-2 py-0.5 rounded bg-red-500 text-white text-[10px] font-bold shadow-lg">Incident</div>
+                      <div className="px-2 py-0.5 rounded bg-red-500 text-white text-[10px] font-bold shadow-lg">Reported Location</div>
                       <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-red-500" />
                     </div>
                   </MarkerContent>
                 </MapMarker>
               )}
-              {(latestTracking.length > 0 ? latestTracking : tracking.slice(-10)).map((t, i) => (
-                <MapMarker key={`trk-${i}`} longitude={t.longitude} latitude={t.latitude}>
+              {userLocation && (
+                <MapMarker longitude={userLocation.lng} latitude={userLocation.lat}>
                   <MarkerContent>
-                    <div className="w-3 h-3 rounded-full bg-amber-500 border-2 border-white shadow" title={t.volunteer?.name} />
+                    <div className="relative">
+                      <div className="h-4 w-4 rounded-full border-2 border-white bg-blue-500 shadow-lg" />
+                      <div className="absolute -inset-2 rounded-full bg-blue-500/20 animate-ping" />
+                    </div>
+                  </MarkerContent>
+                </MapMarker>
+              )}
+              {trackingPointsToShow.map((t, i) => (
+                <MapMarker key={`trk-${t.volunteer?.id ?? i}`} longitude={t.longitude} latitude={t.latitude}>
+                  <MarkerContent>
+                    <div className="w-3 h-3 rounded-full bg-amber-500 border-2 border-white shadow" title={t.volunteer?.name ?? "Teammate"} />
                   </MarkerContent>
                 </MapMarker>
               ))}
               <MapControls position="bottom-right" showZoom showLocate />
             </MapcnMap>
-            <div className="absolute bottom-2 left-2 flex items-center gap-1.5 px-2 py-1 rounded bg-gray-900/90 border border-gray-700">
-              <span className="flex gap-0.5">
-                {[1, 2, 3].map((i) => <span key={i} className="w-1.5 h-3 rounded-sm bg-red-500" />)}
+            <div className="absolute bottom-2 left-2 flex items-center gap-3 px-3 py-1.5 rounded bg-gray-900/90 border border-gray-700">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-blue-500" />
+                <span className="text-white/70 text-[10px] font-semibold uppercase">You</span>
               </span>
-              <span className="text-white/70 text-[10px] font-semibold uppercase">Signal strength</span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-red-500" />
+                <span className="text-white/70 text-[10px] font-semibold uppercase">Reported Location</span>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-amber-500" />
+                <span className="text-white/70 text-[10px] font-semibold uppercase">Tracking</span>
+              </span>
             </div>
           </div>
 
@@ -897,97 +935,112 @@ export default function VolunteerMissions() {
             </div>
           </div>
           <div className="p-4 border-t border-gray-800 space-y-2">
-            {/* Coordinator/Director: confirm or reject completion report */}
-            {isLeadership && mission.status === "COMPLETED" && mission.report && (
+            {isMember ? (
               <>
+                <p className="text-white/40 text-xs text-center">View only — mission actions require Coordinator or Director role.</p>
                 <button
                   type="button"
-                  onClick={() => handleConfirmCompletion(true)}
-                  disabled={actionLoading}
-                  className="w-full py-3.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black text-sm tracking-wider flex items-center justify-center gap-2"
+                  onClick={() => navigate("/volunteer-dashboard/mission-history")}
+                  className="w-full py-3.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium"
                 >
-                  {actionLoading && <Loader2 className="w-4 h-4 animate-spin" />}
-                  Confirm completion
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowRejectCompletion(true)}
-                  disabled={actionLoading}
-                  className="w-full py-2 rounded-lg bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-red-400 text-xs font-semibold transition-colors"
-                >
-                  Reject completion
+                  View history
                 </button>
               </>
-            )}
-
-            {/* Coordinator/Director: agency decision after volunteer rejection */}
-            {isLeadership && mission.status === "ASSIGNED" && logs.some((l) => l.action === "REJECTED") && (
+            ) : (
               <>
-                <p className="text-amber-400 text-xs font-semibold text-center">Volunteer rejected — take action</p>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleAgencyDecision("FAIL", "Mission failed after volunteer rejection.")}
-                    disabled={actionLoading}
-                    className="flex-1 py-3 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-bold"
-                  >
-                    {actionLoading && <Loader2 className="w-3 h-3 animate-spin inline mr-1" />}
-                    Fail mission
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => navigate("/volunteer-dashboard/validation")}
-                    disabled={actionLoading}
-                    className="flex-1 py-3 rounded-lg bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs font-bold"
-                  >
-                    Reassign
-                  </button>
-                </div>
-              </>
-            )}
+                {/* Coordinator/Director: confirm or reject completion report */}
+                {isLeadership && mission.status === "COMPLETED" && mission.report && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleConfirmCompletion(true)}
+                      disabled={actionLoading}
+                      className="w-full py-3.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black text-sm tracking-wider flex items-center justify-center gap-2"
+                    >
+                      {actionLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                      Confirm completion
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowRejectCompletion(true)}
+                      disabled={actionLoading}
+                      className="w-full py-2 rounded-lg bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-red-400 text-xs font-semibold transition-colors"
+                    >
+                      Reject completion
+                    </button>
+                  </>
+                )}
 
-            {/* Volunteer: advance mission phase */}
-            {canAdvancePhase && (
-              <>
-                <button
-                  type="button"
-                  onClick={handlePhaseAction}
-                  disabled={actionLoading}
-                  className="w-full py-3.5 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-black text-sm tracking-wider flex items-center justify-center gap-2"
-                >
-                  {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
-                  {mission.status === "IN_PROGRESS" ? "Finish mission" : mission.status === "ACCEPTED" ? "Start travel" : mission.status === "EN_ROUTE" ? "Arrive on site" : "Start work"}
-                </button>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowFailure(true)}
-                    disabled={actionLoading}
-                    className="flex-1 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-red-400 text-xs font-semibold transition-colors"
-                  >
-                    Report failure
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowCancel(true)}
-                    disabled={actionLoading}
-                    className="flex-1 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white/60 text-xs font-semibold transition-colors"
-                  >
-                    Cancel mission
-                  </button>
-                </div>
-              </>
-            )}
+                {/* Coordinator/Director: agency decision after volunteer rejection */}
+                {isLeadership && mission.status === "ASSIGNED" && logs.some((l) => l.action === "REJECTED") && (
+                  <>
+                    <p className="text-amber-400 text-xs font-semibold text-center">Volunteer rejected — take action</p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleAgencyDecision("FAIL", "Mission failed after volunteer rejection.")}
+                        disabled={actionLoading}
+                        className="flex-1 py-3 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-bold"
+                      >
+                        {actionLoading && <Loader2 className="w-3 h-3 animate-spin inline mr-1" />}
+                        Fail mission
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => navigate("/volunteer-dashboard/validation")}
+                        disabled={actionLoading}
+                        className="flex-1 py-3 rounded-lg bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs font-bold"
+                      >
+                        Reassign
+                      </button>
+                    </div>
+                  </>
+                )}
 
-            {/* Fallback: no actions available */}
-            {!canAdvancePhase && !(isLeadership && mission.status === "COMPLETED" && mission.report) && !(isLeadership && mission.status === "ASSIGNED" && logs.some((l) => l.action === "REJECTED")) && (
-              <button
-                type="button"
-                onClick={() => navigate("/volunteer-dashboard/mission-history")}
-                className="w-full py-3.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium"
-              >
-                View history
-              </button>
+                {/* Volunteer: advance mission phase */}
+                {canAdvancePhase && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handlePhaseAction}
+                      disabled={actionLoading}
+                      className="w-full py-3.5 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-black text-sm tracking-wider flex items-center justify-center gap-2"
+                    >
+                      {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
+                      {mission.status === "IN_PROGRESS" ? "Finish mission" : mission.status === "ACCEPTED" ? "Start travel" : mission.status === "EN_ROUTE" ? "Arrive on site" : "Start work"}
+                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowFailure(true)}
+                        disabled={actionLoading}
+                        className="flex-1 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-red-400 text-xs font-semibold transition-colors"
+                      >
+                        Report failure
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowCancel(true)}
+                        disabled={actionLoading}
+                        className="flex-1 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white/60 text-xs font-semibold transition-colors"
+                      >
+                        Cancel mission
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {/* Fallback: no actions available */}
+                {!canAdvancePhase && !(isLeadership && mission.status === "COMPLETED" && mission.report) && !(isLeadership && mission.status === "ASSIGNED" && logs.some((l) => l.action === "REJECTED")) && (
+                  <button
+                    type="button"
+                    onClick={() => navigate("/volunteer-dashboard/mission-history")}
+                    className="w-full py-3.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium"
+                  >
+                    View history
+                  </button>
+                )}
+              </>
             )}
           </div>
         </div>

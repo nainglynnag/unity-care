@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { Link } from "react-router-dom";
 import {
   Loader2,
   Search,
@@ -10,6 +11,7 @@ import {
   Star,
   User,
   ChevronDown,
+  Lock,
 } from "lucide-react";
 import {
   getMyAgencyMembership,
@@ -52,6 +54,8 @@ export default function VolunteerTeam() {
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
 
   const isDirector = membership?.myRole === "DIRECTOR";
+  const canChangeRoles = isDirector;
+  const roleOptionsForCurrentUser = ROLE_OPTIONS;
 
   useEffect(() => {
     (async () => {
@@ -108,7 +112,12 @@ export default function VolunteerTeam() {
       toast.success(`Role updated to ${newRole}`);
       await fetchMembers();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to update role");
+      const e = err as Error & { code?: string };
+      if (e.code === "DIRECTOR_REQUIRED" || (e.message && e.message.includes("at least one director"))) {
+        toast.error("Cannot demote the only director. Promote another member to Director first, then you can change this person's role.");
+      } else {
+        toast.error(e instanceof Error ? e.message : "Failed to update role");
+      }
     } finally {
       setChangingRole(null);
     }
@@ -130,6 +139,25 @@ export default function VolunteerTeam() {
           <p className="text-white/50 text-sm text-center max-w-md">
             {membershipError ?? "No agency membership found."}
           </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (membership.myRole === "MEMBER") {
+    return (
+      <div className="p-6">
+        <div className="flex flex-col items-center justify-center py-20 gap-4">
+          <Lock className="w-10 h-10 text-white/30" />
+          <p className="text-white/50 text-sm text-center max-w-md">
+            Team is only available to Directors and Coordinators.
+          </p>
+          <Link
+            to="/volunteer-dashboard"
+            className="px-4 py-2 rounded-lg bg-red-500/20 text-red-500 hover:bg-red-500/30 text-sm font-medium transition-colors"
+          >
+            Back to Dashboard
+          </Link>
         </div>
       </div>
     );
@@ -243,7 +271,7 @@ export default function VolunteerTeam() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      {!isDirector ? (
+                      {!canChangeRoles ? (
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${memberBadge.bg}`}>
                           <memberBadge.icon className="w-3 h-3" />
                           {memberBadge.label}
@@ -272,7 +300,7 @@ export default function VolunteerTeam() {
                             <>
                               <div className="fixed inset-0 z-10" onClick={() => setOpenDropdown(null)} />
                               <div className="absolute right-0 top-full mt-1 w-44 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-20 py-1">
-                                {ROLE_OPTIONS.map((opt) => (
+                                {roleOptionsForCurrentUser.map((opt) => (
                                   <button
                                     key={opt.value}
                                     type="button"

@@ -58,7 +58,12 @@ export default function AdminVolunteerRoles() {
     (async () => {
       try {
         const result = await getAgencies({ perPage: 100 });
-        setAgencies(result.agencies.filter((a) => a.isActive));
+        // Show all agencies except Default Agency; only hide those explicitly inactive (some APIs omit isActive)
+        const list = result.agencies.filter(
+          (a) => a.isActive !== false && a.name !== "Default Agency",
+        );
+        setAgencies(list);
+        setSelectedAgencyId((prev) => (list.some((a) => a.id === prev) ? prev : ""));
       } catch {
         toast.error("Failed to load agencies");
       } finally {
@@ -105,7 +110,12 @@ export default function AdminVolunteerRoles() {
       toast.success(`Role updated to ${newRole}`);
       await fetchVolunteers();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to update role");
+      const e = err as Error & { code?: string };
+      if (e.code === "DIRECTOR_REQUIRED" || (e.message && e.message.includes("at least one director"))) {
+        toast.error("Cannot demote the only director. Promote another member to Director first, then you can change this person's role.");
+      } else {
+        toast.error(e instanceof Error ? e.message : "Failed to update role");
+      }
     } finally {
       setChangingRole(null);
     }
@@ -119,6 +129,9 @@ export default function AdminVolunteerRoles() {
         <h1 className="text-white text-2xl font-black tracking-wide">VOLUNTEER ROLES</h1>
         <p className="text-white/50 text-sm mt-1">
           Promote available members to Director or Coordinator within an agency
+        </p>
+        <p className="text-white/40 text-xs mt-0.5">
+          An agency must always have at least one Director. To change a director’s role, promote another member to Director first.
         </p>
       </div>
 
@@ -156,7 +169,9 @@ export default function AdminVolunteerRoles() {
               >
                 <Shield className="w-3.5 h-3.5" />
                 {agency.name}
-                <span className="text-[10px] opacity-60">({agency.memberCount})</span>
+                {agency.memberCount != null && (
+                  <span className="text-[10px] opacity-60">({agency.memberCount})</span>
+                )}
               </button>
             ))}
           </div>
@@ -182,11 +197,8 @@ export default function AdminVolunteerRoles() {
             {selectedAgency && (
               <div className="text-right">
                 <p className="text-white/40 text-xs">
-                  {totalRecords} available member{totalRecords !== 1 ? "s" : ""} in{" "}
+                  {totalRecords} volunteer{totalRecords !== 1 ? "s" : ""} in{" "}
                   <span className="text-white/60 font-medium">{selectedAgency.name}</span>
-                </p>
-                <p className="text-white/25 text-[10px] mt-0.5">
-                  Promoted volunteers won't appear here (they are no longer regular members)
                 </p>
               </div>
             )}
@@ -204,10 +216,10 @@ export default function AdminVolunteerRoles() {
           ) : volunteers.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 gap-2">
               <UserCog className="w-8 h-8 text-white/20" />
-              <p className="text-white/50 text-sm">No available volunteers in this agency.</p>
+              <p className="text-white/50 text-sm">No volunteers in this agency.</p>
             </div>
           ) : (
-            <div className="bg-gray-800/50 border border-gray-800 rounded-xl overflow-hidden">
+            <div className="bg-gray-800/50 border border-gray-800 rounded-xl">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-800">
@@ -218,10 +230,12 @@ export default function AdminVolunteerRoles() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-800/50">
-                  {volunteers.map((vol) => {
-                    const badge = getRoleBadge("MEMBER");
+                  {volunteers.map((vol, idx) => {
+                    const badge = getRoleBadge(vol.role ?? "MEMBER");
                     const isChanging = changingRole === vol.userId;
                     const isOwnUser = vol.userId === user?.id;
+                    const open = openDropdown === vol.userId;
+                    const flipUp = idx >= volunteers.length - 3 && volunteers.length > 3;
 
                     return (
                       <tr key={vol.userId} className="hover:bg-gray-800/30 transition-colors">
@@ -286,7 +300,7 @@ export default function AdminVolunteerRoles() {
                             <div className="relative inline-block">
                               <button
                                 type="button"
-                                onClick={() => setOpenDropdown(openDropdown === vol.userId ? null : vol.userId)}
+                                onClick={() => setOpenDropdown(open ? null : vol.userId)}
                                 disabled={isOwnUser}
                                 title={isOwnUser ? "Cannot change your own role" : "Change role"}
                                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors ${badge.bg} ${
@@ -297,23 +311,30 @@ export default function AdminVolunteerRoles() {
                                 {badge.label}
                                 {!isOwnUser && <ChevronDown className="w-3 h-3 ml-0.5" />}
                               </button>
-                              {openDropdown === vol.userId && (
-                                <>
-                                  <div className="fixed inset-0 z-10" onClick={() => setOpenDropdown(null)} />
-                                  <div className="absolute right-0 top-full mt-1 w-44 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-20 py-1">
-                                    {ROLE_OPTIONS.map((opt) => (
-                                      <button
-                                        key={opt.value}
-                                        type="button"
-                                        onClick={() => handleRoleChange(vol.userId, opt.value)}
-                                        className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-800 flex items-center gap-2.5 transition-colors"
-                                      >
-                                        <opt.icon className={`w-4 h-4 ${opt.color}`} />
-                                        <span className="text-white/80">{opt.label}</span>
-                                      </button>
-                                    ))}
-                                  </div>
-                                </>
+                              {open && (
+                                <div className="fixed inset-0 z-10" onClick={() => setOpenDropdown(null)} />
+                              )}
+                              {open && (
+                                <div
+                                  className="absolute right-0 w-48 bg-gray-900 border border-gray-700 rounded-lg shadow-2xl z-20 py-1"
+                                  style={{
+                                    ...(flipUp
+                                      ? { bottom: "100%", marginBottom: "4px" }
+                                      : { top: "100%", marginTop: "4px" }),
+                                  }}
+                                >
+                                  {ROLE_OPTIONS.map((opt) => (
+                                    <button
+                                      key={opt.value}
+                                      type="button"
+                                      onClick={() => handleRoleChange(vol.userId, opt.value)}
+                                      className="w-full text-left px-4 py-2 text-sm text-white/70 hover:text-white hover:bg-gray-800 flex items-center gap-2"
+                                    >
+                                      <opt.icon className={`w-4 h-4 shrink-0 ${opt.color}`} />
+                                      <span>{opt.label}</span>
+                                    </button>
+                                  ))}
+                                </div>
                               )}
                             </div>
                           )}

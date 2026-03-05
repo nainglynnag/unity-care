@@ -455,9 +455,34 @@ export async function listMyIncidents(
 
 // List Incidents (Admin / Volunteer)
 // Supports optional Haversine distance filtering.
-// When sortBy=distance or radiusKm is provided, geo coordinates are needed.
-// If lat/lng are not in query, the requester's agency location is used.
-// ADMIN/SUPERADMIN without an agency must provide lat/lng explicitly.
+
+/**
+ * Returns incident IDs that are the primary incident of a mission with status
+ * COMPLETED or CLOSED. Used only when the requester is a VOLUNTEER.
+ *
+ * Why: Volunteers see "Nearby Incidents" (and the Validation map) from GET /incidents.
+ * We exclude incidents that already have a completed/closed mission so they don’t
+ * still appear as actionable. Without this, VERIFIED incidents whose mission
+ * was completed would keep showing in the list and confuse users.
+ */
+async function getCompletedMissionPrimaryIncidentIds(): Promise<string[]> {
+  const rows = await prisma.mission.findMany({
+    where: { status: { in: ["COMPLETED", "CLOSED"] } },
+    select: { primaryIncidentId: true },
+  });
+  return rows.map((r) => r.primaryIncidentId);
+}
+
+/**
+ * List incidents with optional geo (distance/radius) filtering.
+ * When sortBy=distance or radiusKm is provided, geo coordinates are needed;
+ * if lat/lng are not in query, the requester's agency location is used.
+ * ADMIN/SUPERADMIN without an agency must provide lat/lng explicitly.
+ *
+ * For VOLUNTEER requesters only: we exclude incidents that are the primary
+ * of a COMPLETED or CLOSED mission (see getCompletedMissionPrimaryIncidentIds)
+ * so "Nearby Incidents" and Validation map don’t show already-completed missions.
+ */
 export async function listIncidents(
   requesterId: string,
   requesterRole: string,
@@ -467,6 +492,10 @@ export async function listIncidents(
   let { lat, lng } = query;
   const skip = (page - 1) * perPage;
   const needsGeo = sortBy === "distance" || radiusKm !== undefined;
+  const isVolunteer = requesterRole === "VOLUNTEER";
+  const excludeCompletedMissionPrimaryIds = isVolunteer
+    ? await getCompletedMissionPrimaryIncidentIds()
+    : [];
 
   // Resolve lat/lng from agency when not explicitly provided
   if (needsGeo && lat === undefined) {
@@ -481,12 +510,16 @@ export async function listIncidents(
     lng = membership.agency.longitude;
   }
 
-  // Branch A: no geo — existing Prisma query, unchanged behaviour
+  // Branch A: no geo — existing Prisma query
   if (!needsGeo) {
     const where = {
       deletedAt: null,
       ...(status && { status }),
       ...(categoryId && { categoryId }),
+      // Volunteer: hide incidents that are primary of a completed/closed mission (see comment above)
+      ...(excludeCompletedMissionPrimaryIds.length > 0 && {
+        id: { notIn: excludeCompletedMissionPrimaryIds },
+      }),
     };
 
     const [incidents, totalRecords] = await Promise.all([
@@ -530,6 +563,7 @@ export async function listIncidents(
 
   let statusFilter = "";
   let categoryFilter = "";
+  let excludeCompletedFilter = "";
 
   if (status) {
     statusFilter = `AND i."status" = $${paramIdx}::"IncidentStatus"`;
@@ -539,6 +573,14 @@ export async function listIncidents(
   if (categoryId) {
     categoryFilter = `AND i."categoryId" = $${paramIdx}`;
     params.push(categoryId);
+  }
+  // Volunteer: exclude incidents that are primary of a completed/closed mission (see getCompletedMissionPrimaryIncidentIds)
+  if (excludeCompletedMissionPrimaryIds.length > 0) {
+    const placeholders = excludeCompletedMissionPrimaryIds
+      .map(() => `$${paramIdx++}`)
+      .join(", ");
+    excludeCompletedFilter = `AND i."id" NOT IN (${placeholders})`;
+    params.push(...excludeCompletedMissionPrimaryIds);
   }
 
   const orderClause =
@@ -557,6 +599,7 @@ export async function listIncidents(
     WHERE  i."deletedAt" IS NULL
       ${statusFilter}
       ${categoryFilter}
+      ${excludeCompletedFilter}
       ${radiusFilter}
     ${orderClause}
     LIMIT  $${perPageIdx}
@@ -579,12 +622,17 @@ export async function listIncidents(
   }
   let countStatusFilter = "";
   let countCategoryFilter = "";
+  let countExcludeCompletedFilter = "";
   if (status) {
     countStatusFilter = `AND i."status" = $${countParamIdx}::"IncidentStatus"`;
     countParamIdx++;
   }
   if (categoryId) {
     countCategoryFilter = `AND i."categoryId" = $${countParamIdx}`;
+    countParamIdx++;
+  }
+  if (excludeCompletedMissionPrimaryIds.length > 0) {
+    countExcludeCompletedFilter = `AND i."id" NOT IN (${excludeCompletedMissionPrimaryIds.map((_, i) => `$${countParamIdx + i}`).join(", ")})`;
   }
 
   const countRows = await prisma.$queryRawUnsafe<Array<{ count: bigint }>>(
@@ -594,6 +642,7 @@ export async function listIncidents(
     WHERE  i."deletedAt" IS NULL
       ${countStatusFilter}
       ${countCategoryFilter}
+      ${countExcludeCompletedFilter}
       ${countRadiusFilter}
     `,
     ...countParams,

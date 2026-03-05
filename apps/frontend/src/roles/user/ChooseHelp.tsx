@@ -57,6 +57,10 @@ function ChooseHelp() {
       setSubmitError("Location is required. Please enable location and try again.");
       return;
     }
+    if (!categoryId.trim()) {
+      setSubmitError("Please select a category.");
+      return;
+    }
     const title = incidentTitle.trim().length >= TITLE_MIN_LENGTH
       ? incidentTitle.trim()
       : (HELP_TITLES[option] ?? "Emergency - Need help");
@@ -65,13 +69,13 @@ function ChooseHelp() {
     try {
       const data = await createIncident({
         title,
+        categoryId: categoryId.trim(),
         latitude: location.lat,
         longitude: location.lng,
         forSelf: true,
         description: incidentDescription.trim() || undefined,
         addressText: location.addressText ?? undefined,
         accuracy: "GPS",
-        ...(categoryId.trim() && { categoryId: categoryId.trim() }),
       });
       const incidentId = data?.incident?.id;
       const state = { incidentId };

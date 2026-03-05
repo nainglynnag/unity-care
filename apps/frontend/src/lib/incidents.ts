@@ -1,4 +1,8 @@
 import { API_BASE, authFetch } from "./api";
+import {
+  getCompletedMissionPrimaryIncidentIds,
+  getAgencyMissionPrimaryIncidentIds,
+} from "./missions";
 
 export type IncidentCategory = {
   id: string;
@@ -8,7 +12,7 @@ export type IncidentCategory = {
 
 export type CreateIncidentBody = {
   title: string;
-  categoryId?: string;
+  categoryId: string;
   latitude: number;
   longitude: number;
   forSelf: boolean;
@@ -35,13 +39,16 @@ export type CreateIncidentResponse = {
 
 export type IncidentMissionAssignment = {
   role: string;
-  assignee: { id: string; name: string };
+  assignee: { id: string; name: string; email?: string; phone?: string | null };
 };
 export type IncidentMission = {
   id: string;
   status: string;
   missionType?: string;
   assignments?: IncidentMissionAssignment[];
+  tracking?: { latitude: number; longitude: number; recordedAt: string; volunteer: { id: string; name: string } }[];
+  logs?: { action: string; note: string | null; createdAt: string; actor?: { id: string; name: string } | null }[];
+  report?: { id: string; summary: string; submittedAt: string } | null;
 };
 export type IncidentDetail = {
   id: string;
@@ -51,10 +58,19 @@ export type IncidentDetail = {
   latitude: number;
   longitude: number;
   addressText?: string | null;
+  landmark?: string | null;
   category: { id: string; name: string };
-  reporter?: { id: string; name: string; email: string };
+  reporter?: {
+    id: string;
+    name: string;
+    email?: string;
+    phone?: string | null;
+    emergencyProfile?: { contacts: { name: string; phone: string; isPrimary?: boolean }[] };
+  };
   media?: { id: string; url: string; mediaType: string }[];
   missions?: IncidentMission[];
+  verifications?: { id: string; decision: string | null; comment: string | null; createdAt: string; verifier: { id: string; name: string; email: string } }[];
+  _count?: { verifications: number; media: number; missions: number };
 };
 
 export type NearbyIncident = {
@@ -95,6 +111,8 @@ export type AssignedIncident = {
     description?: string | null;
     category?: { id?: string; name?: string | null } | null;
     reporter?: { id: string; name: string } | null;
+    media?: { id: string; url: string; mediaType: string }[];
+    _count?: { missions: number };
   };
 };
 
@@ -113,56 +131,108 @@ export async function getIncident(incidentId: string): Promise<IncidentDetail | 
   return json?.data ?? null;
 }
 
-// List incidents for the dashboard.
-// When lat/lng are provided, uses Haversine geo filtering + distanceKm.
-// When lat/lng are omitted, returns the latest reported incidents (no geo).
+// List incidents (GET /incidents). Matches listIncidentQuerySchema.
+// When lat/lng are provided, uses Haversine geo filtering; sortBy=distance orders by nearest.
 export async function getNearbyIncidents(params: {
+  status?: string;
+  categoryId?: string;
   lat?: number;
   lng?: number;
   radiusKm?: number;
+  sortBy?: "createdAt" | "distance";
+  page?: number;
   perPage?: number;
-  status?: string;
 }): Promise<NearbyIncidentsResult> {
   const search = new URLSearchParams();
-  search.set("sortBy", "createdAt");
-  search.set("status", params.status ?? "REPORTED");
-  search.set("page", "1");
-  if (params.lat != null && params.lng != null) {
+  if (params?.status) search.set("status", params.status);
+  if (params?.categoryId) search.set("categoryId", params.categoryId);
+  search.set("sortBy", params?.sortBy ?? "createdAt");
+  search.set("page", String(params?.page ?? 1));
+  search.set("perPage", String(params?.perPage ?? 10));
+  if (params?.lat != null && params?.lng != null) {
     search.set("lat", String(params.lat));
     search.set("lng", String(params.lng));
-    if (params.radiusKm != null) search.set("radiusKm", String(params.radiusKm));
+    if (params?.radiusKm != null) search.set("radiusKm", String(params.radiusKm));
   }
-  if (params.perPage != null) search.set("perPage", String(params.perPage));
 
   const res = await authFetch(`${API_BASE}/incidents?${search.toString()}`);
   const json = await res.json();
   if (!res.ok) {
-    const msg =
-      json?.error?.message ??
-      json?.meta?.message ??
-      "Failed to load nearby incidents";
-    throw new Error(msg);
+    const msg = json?.error?.message ?? json?.meta?.message ?? "Failed to load nearby incidents";
+    const details = json?.error?.details;
+    throw new Error(Array.isArray(details) && details.length > 0 ? `${msg}: ${details.map((d: { message?: string }) => d?.message ?? d).join("; ")}` : msg);
   }
 
-  // Backend paginatedResponse: data = incidents array, meta.pagination = { totalRecords, ... }
   const data = json?.data;
   const list: NearbyIncident[] = Array.isArray(data) ? (data as NearbyIncident[]) : [];
-  const totalRecords =
-    typeof json?.meta?.pagination?.totalRecords === "number"
-      ? json.meta.pagination.totalRecords
-      : list.length;
-
+  const totalRecords = typeof json?.meta?.pagination?.totalRecords === "number" ? json.meta.pagination.totalRecords : list.length;
   return { incidents: list, totalRecords };
 }
 
-// Incidents assigned to the current volunteer for verification.
-// Used by the Validation page. Returns most recent assignments first.
-export async function getAssignedIncidents(): Promise<AssignedIncident[]> {
-  const res = await authFetch(`${API_BASE}/incidents/assigned`);
+// Incidents assigned to the current volunteer for verification (GET /incidents/assigned).
+// Matches listAssignedIncidentsQuerySchema: status, page, perPage.
+export async function getAssignedIncidents(params?: {
+  status?: string;
+  page?: number;
+  perPage?: number;
+}): Promise<AssignedIncident[]> {
+  const qs = new URLSearchParams();
+  if (params?.status) qs.set("status", params.status);
+  qs.set("page", String(params?.page ?? 1));
+  qs.set("perPage", String(params?.perPage ?? 20));
+  const res = await authFetch(`${API_BASE}/incidents/assigned?${qs.toString()}`);
   if (!res.ok) return [];
   const json = await res.json();
   const data = json?.data;
   return Array.isArray(data) ? (data as AssignedIncident[]) : [];
+}
+
+/**
+ * Same as getAssignedIncidents but excludes assignments whose incident
+ * is the primary incident of a COMPLETED or CLOSED mission (so validation
+ * doesn’t show “Create Mission” for finished work). Filtering is done
+ * on the frontend using the current user’s completed/closed missions.
+ */
+export async function getAssignedIncidentsFiltered(agencyId?: string): Promise<AssignedIncident[]> {
+  const [assignments, myIds, agencyMissionIds] = await Promise.all([
+    getAssignedIncidents(),
+    getCompletedMissionPrimaryIncidentIds(),
+    agencyId ? getAgencyMissionPrimaryIncidentIds(agencyId) : Promise.resolve(new Set<string>()),
+  ]);
+  const excludeIds = new Set([...myIds, ...agencyMissionIds]);
+  return assignments.filter((a) => !excludeIds.has(a.incident.id));
+}
+
+/**
+ * Fetches nearby REPORTED and VERIFIED incidents (same as Validation page
+ * merge), then removes VERIFIED incidents that are the primary incident
+ * of a COMPLETED or CLOSED mission so they don’t still show on the map.
+ * Filtering is done on the frontend using the current user’s completed/closed missions.
+ */
+export async function getNearbyIncidentsFiltered(params: {
+  lat?: number;
+  lng?: number;
+  radiusKm?: number;
+  perPage?: number;
+  agencyId?: string;
+}): Promise<NearbyIncidentsResult> {
+  const { agencyId, ...rest } = params;
+  const [reported, verified, myIds, agencyMissionIds] = await Promise.all([
+    getNearbyIncidents({ ...rest, status: "REPORTED" }),
+    getNearbyIncidents({ ...rest, status: "VERIFIED" }),
+    getCompletedMissionPrimaryIncidentIds(),
+    agencyId ? getAgencyMissionPrimaryIncidentIds(agencyId) : Promise.resolve(new Set<string>()),
+  ]);
+  const excludeIds = new Set([...myIds, ...agencyMissionIds]);
+  const seen = new Set<string>();
+  const merged: NearbyIncident[] = [];
+  for (const inc of [...reported.incidents, ...verified.incidents]) {
+    if (seen.has(inc.id)) continue;
+    seen.add(inc.id);
+    if (inc.status === "VERIFIED" && excludeIds.has(inc.id)) continue;
+    merged.push(inc);
+  }
+  return { incidents: merged, totalRecords: merged.length };
 }
 
 /** Volunteer self-assigns as verifier for a REPORTED incident via PATCH /incidents/:id/assign-verifier. */
@@ -245,7 +315,11 @@ export async function getMyIncidents(params?: {
   qs.set("perPage", String(params?.perPage ?? 10));
   const res = await authFetch(`${API_BASE}/incidents/me?${qs.toString()}`);
   const json = await res.json();
-  if (!res.ok) throw new Error(json?.error?.message ?? "Failed to load your incidents");
+  if (!res.ok) {
+    const msg = json?.error?.message ?? "Failed to load your incidents";
+    const details = json?.error?.details;
+    throw new Error(Array.isArray(details) && details.length > 0 ? `${msg}: ${details.map((d: { message?: string }) => d?.message ?? d).join("; ")}` : msg);
+  }
   const data = json?.data;
   const list: MyIncident[] = Array.isArray(data) ? data : [];
   const pagination = json?.meta?.pagination;
@@ -353,11 +427,9 @@ export async function createIncident(
   });
   const json = await res.json();
   if (!res.ok) {
-    const msg =
-      json?.error?.message ??
-      json?.meta?.message ??
-      "Failed to create incident";
-    throw new Error(msg);
+    const msg = json?.error?.message ?? json?.meta?.message ?? "Failed to create incident";
+    const details = json?.error?.details;
+    throw new Error(Array.isArray(details) && details.length > 0 ? `${msg}: ${details.map((d: { message?: string }) => d?.message ?? d).join("; ")}` : msg);
   }
   return json?.data ?? json;
 }

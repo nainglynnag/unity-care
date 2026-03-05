@@ -34,7 +34,6 @@ export function CreateMissionModal({
   const [priority, setPriority] = useState<string>("MEDIUM");
   const [submitting, setSubmitting] = useState(false);
 
-  const [agencyId, setAgencyId] = useState<string | null>(null);
   const [volunteers, setVolunteers] = useState<TeamMember[]>([]);
   const [volLoading, setVolLoading] = useState(true);
   const [volSearch, setVolSearch] = useState("");
@@ -48,9 +47,8 @@ export function CreateMissionModal({
           toast.error("Could not resolve agency membership");
           return;
         }
-        setAgencyId(membership.agencyId);
         const result = await getTeamMembers(membership.agencyId, { perPage: 50 });
-        setVolunteers(result.members.filter((m) => m.isAvailable));
+        setVolunteers(result.members);
       } catch {
         toast.error("Failed to load volunteers");
       } finally {
@@ -151,9 +149,12 @@ export function CreateMissionModal({
 
         {/* Volunteer selection */}
         <div>
-          <label className="text-white/60 text-xs font-semibold uppercase tracking-wider">
-            Assign volunteers * <span className="text-white/30 normal-case">(first selected = Leader)</span>
+          <label className="text-white/60 text-xs font-semibold uppercase tracking-wider block">
+            Assign volunteers *
           </label>
+          <p className="text-white/40 text-[10px] mt-0.5 normal-case">
+            First selected = Leader. Directors and coordinators can join the mission (include yourself if you’re going).
+          </p>
 
           {/* Selected */}
           {selected.length > 0 && (
@@ -220,8 +221,16 @@ export function CreateMissionModal({
                         </div>
                       )}
                       <span className="flex-1 font-medium">{vol.name}</span>
+                      {vol.role !== "MEMBER" && (
+                        <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 text-[9px] font-bold uppercase">
+                          {vol.role}
+                        </span>
+                      )}
+                      {!vol.isAvailable && (
+                        <span className="px-1.5 py-0.5 rounded bg-gray-600/50 text-white/50 text-[9px]">Off</span>
+                      )}
                       {vol.skills.length > 0 && (
-                        <span className="text-white/30 text-[10px]">{vol.skills.map((s) => s.name).join(", ")}</span>
+                        <span className="text-white/30 text-[10px] truncate max-w-[80px]">{vol.skills.map((s) => s.name).join(", ")}</span>
                       )}
                       {isSelected && <span className="text-red-400 text-[10px] font-bold">SELECTED</span>}
                     </button>

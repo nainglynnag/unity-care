@@ -17,13 +17,14 @@ import {
 import { VolunteerMapCard } from "@/components/volunteer/VolunteerMapCard";
 import { NearbyIncidentsList } from "@/components/volunteer/NearbyIncidentsList";
 import {
-  getNearbyIncidents,
+  getNearbyIncidentsFiltered,
   getIncident,
   type NearbyIncident,
   type IncidentDetail,
 } from "@/lib/incidents";
 import { getVolunteerSummary, type VolunteerSummary } from "@/lib/dashboard";
 import { getAccessToken, API_BASE, authFetch } from "@/lib/api";
+import { getMyAgencyMembership } from "@/lib/agencyTeam";
 
 export default function VolunteerDashboard() {
   const [elapsed, setElapsed] = useState(0);
@@ -44,6 +45,7 @@ export default function VolunteerDashboard() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [isLeadership, setIsLeadership] = useState(false);
+  const [agencyId, setAgencyId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -108,20 +110,25 @@ export default function VolunteerDashboard() {
   // Load incidents: geo-filtered when location available, latest reported otherwise.
   // Fires once location resolves OR immediately when location is denied/unavailable.
   useEffect(() => {
+    getMyAgencyMembership().then((m) => setAgencyId(m?.agencyId ?? null));
+  }, []);
+
+  useEffect(() => {
     if (locationLoading) return;
 
     let cancelled = false;
     setNearbyLoading(true);
     setNearbyError(null);
 
-    const params: Parameters<typeof getNearbyIncidents>[0] = { perPage: 5 };
+    const params: { lat?: number; lng?: number; radiusKm?: number; perPage?: number; agencyId?: string } = { perPage: 5 };
     if (userLocation) {
       params.lat = userLocation[0];
       params.lng = userLocation[1];
       params.radiusKm = 50;
     }
+    if (agencyId) params.agencyId = agencyId;
 
-    getNearbyIncidents(params)
+    getNearbyIncidentsFiltered(params)
       .then((result) => {
         if (cancelled) return;
         setNearbyIncidents(result.incidents);
@@ -140,7 +147,7 @@ export default function VolunteerDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [locationLoading, userLocation]);
+  }, [locationLoading, userLocation, agencyId]);
 
   // Fetch volunteer dashboard summary (real stats)
   useEffect(() => {
@@ -155,13 +162,14 @@ export default function VolunteerDashboard() {
   // Refresh nearby incidents when a new incident is reported (WS signal)
   useEffect(() => {
     const handler = () => {
-      const params: Parameters<typeof getNearbyIncidents>[0] = { perPage: 5 };
+      const params: { lat?: number; lng?: number; radiusKm?: number; perPage?: number; agencyId?: string } = { perPage: 5 };
       if (userLocation) {
         params.lat = userLocation[0];
         params.lng = userLocation[1];
         params.radiusKm = 50;
       }
-      getNearbyIncidents(params)
+      if (agencyId) params.agencyId = agencyId;
+      getNearbyIncidentsFiltered(params)
         .then((result) => {
           setNearbyIncidents(result.incidents);
           setNearbyTotal(result.totalRecords);
@@ -175,7 +183,7 @@ export default function VolunteerDashboard() {
     return () => {
       window.removeEventListener("unitycare:incident-created", handler as EventListener);
     };
-  }, [userLocation]);
+  }, [userLocation, agencyId]);
 
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60);

@@ -13,7 +13,7 @@ const dashboardItem = {
   icon: LayoutDashboard,
 } as const;
 
-const LEADERSHIP_ONLY = new Set(["/volunteer-dashboard/analytics"]);
+const LEADERSHIP_ONLY = new Set(["/volunteer-dashboard/analytics", "/volunteer-dashboard/team", "/volunteer-dashboard/mission-history"]);
 
 const protectedNavItems = [
   { to: "/volunteer-dashboard/missions", end: false, label: "Missions", icon: Radio },

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
@@ -19,10 +19,10 @@ import {
 } from "@/components/user/mapcn";
 import { NearbyIncidentsList } from "@/components/volunteer/NearbyIncidentsList";
 import { CreateMissionModal } from "@/components/volunteer/CreateMissionModal";
-import { API_BASE, authFetch } from "../../lib/api";
+import { getMyAgencyMembership } from "../../lib/agencyTeam";
 import {
-  getAssignedIncidents,
-  getNearbyIncidents,
+  getAssignedIncidentsFiltered,
+  getNearbyIncidentsFiltered,
   acceptIncidentForVerification,
   submitVerification,
   confirmVerification,
@@ -34,25 +34,25 @@ import {
 } from "../../lib/incidents";
 import toast from "react-hot-toast";
 
-/** Returns the user's agency role so we can gate actions (not visibility). */
-function useAgencyRole(): { loaded: boolean; isLeadership: boolean } {
-  const [state, setState] = useState<{ loaded: boolean; isLeadership: boolean }>({ loaded: false, isLeadership: false });
+/** Returns the user's agency role and id so we can gate actions and filter by team. */
+function useAgencyRole(): { loaded: boolean; isLeadership: boolean; isMember: boolean; agencyId: string | null } {
+  const [state, setState] = useState<{ loaded: boolean; isLeadership: boolean; isMember: boolean; agencyId: string | null }>({
+    loaded: false,
+    isLeadership: false,
+    isMember: false,
+    agencyId: null,
+  });
   useEffect(() => {
     let cancelled = false;
-    authFetch(`${API_BASE}/auth/me`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((json) => {
+    getMyAgencyMembership()
+      .then((membership) => {
         if (cancelled) return;
-        const data = json?.data;
-        const memberships = data?.agencyMemberships as Array<{ role: string }> | undefined;
-        if (!memberships?.length) {
-          setState({ loaded: true, isLeadership: false });
-          return;
-        }
-        const hasLeadership = memberships.some((m) => m.role === "COORDINATOR" || m.role === "DIRECTOR");
-        setState({ loaded: true, isLeadership: hasLeadership });
+        const isLeadership = membership ? (membership.myRole === "COORDINATOR" || membership.myRole === "DIRECTOR") : false;
+        const isMember = membership?.myRole === "MEMBER";
+        const agencyId = membership?.agencyId ?? null;
+        setState({ loaded: true, isLeadership, isMember, agencyId });
       })
-      .catch(() => setState({ loaded: true, isLeadership: false }));
+      .catch(() => setState({ loaded: true, isLeadership: false, isMember: false, agencyId: null }));
     return () => { cancelled = true; };
   }, []);
   return state;
@@ -63,7 +63,7 @@ const MAP_ZOOM_VOLUNTEER = 13;
 
 export default function VolunteerValidation() {
   const navigate = useNavigate();
-  const { isLeadership } = useAgencyRole();
+  const { isLeadership, isMember, agencyId } = useAgencyRole();
   const [showIncidents, setShowIncidents] = useState(false);
   const [assignments, setAssignments] = useState<AssignedIncident[]>([]);
   const [loadingAssignments, setLoadingAssignments] = useState(true);
@@ -85,10 +85,16 @@ export default function VolunteerValidation() {
   const [nearbyIncidents, setNearbyIncidents] = useState<NearbyIncident[]>([]);
   const [selectedPinIncidentId, setSelectedPinIncidentId] = useState<string | null>(null);
   const [createMissionFor, setCreateMissionFor] = useState<{ id: string; title: string } | null>(null);
+  const nearbyRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastAssignmentsRefreshRef = useRef<number>(0);
+  const ASSIGNMENTS_REFRESH_THROTTLE_MS = 2500;
 
   const refreshAssignments = useCallback(() => {
+    const now = Date.now();
+    if (now - lastAssignmentsRefreshRef.current < ASSIGNMENTS_REFRESH_THROTTLE_MS) return;
+    lastAssignmentsRefreshRef.current = now;
     setAssignmentsError("");
-    getAssignedIncidents()
+    getAssignedIncidentsFiltered(agencyId ?? undefined)
       .then(setAssignments)
       .catch((err) => {
         setAssignmentsError(
@@ -97,13 +103,13 @@ export default function VolunteerValidation() {
             : "Failed to load validation assignments",
         );
       });
-  }, []);
+  }, [agencyId]);
 
-  // Fetch assigned incidents for this volunteer
+  // Fetch assigned incidents for this volunteer (filtered: exclude incidents with completed/closed mission; team missions when in agency)
   useEffect(() => {
     let cancelled = false;
     setLoadingAssignments(true);
-    getAssignedIncidents()
+    getAssignedIncidentsFiltered(agencyId ?? undefined)
       .then((data) => {
         if (!cancelled) setAssignments(data);
       })
@@ -122,7 +128,7 @@ export default function VolunteerValidation() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [agencyId]);
 
   // When volunteer accepts a nearby incident, refresh assignments so validation view shows it
   useEffect(() => {
@@ -153,32 +159,53 @@ export default function VolunteerValidation() {
     );
   }, []);
 
-  // Fetch nearby incidents for map markers (all volunteers)
-  useEffect(() => {
-    if (locationLoading) return;
-    let cancelled = false;
-    const baseParams: { lat?: number; lng?: number; radiusKm?: number; perPage?: number } = { perPage: 50 };
+  const refreshNearbyIncidents = useCallback(() => {
+    if (nearbyRefreshTimeoutRef.current) {
+      clearTimeout(nearbyRefreshTimeoutRef.current);
+      nearbyRefreshTimeoutRef.current = null;
+    }
+    const baseParams: { lat?: number; lng?: number; radiusKm?: number; perPage?: number; agencyId?: string } = { perPage: 50 };
     if (userLocation) {
       baseParams.lat = userLocation[0];
       baseParams.lng = userLocation[1];
       baseParams.radiusKm = 20;
     }
-    Promise.all([
-      getNearbyIncidents({ ...baseParams, status: "REPORTED" }),
-      getNearbyIncidents({ ...baseParams, status: "VERIFIED" }),
-    ])
-      .then(([reported, verified]) => {
-        if (cancelled) return;
-        const seen = new Set<string>();
-        const merged: NearbyIncident[] = [];
-        for (const inc of [...reported.incidents, ...verified.incidents]) {
-          if (!seen.has(inc.id)) { seen.add(inc.id); merged.push(inc); }
-        }
-        setNearbyIncidents(merged);
-      })
+    if (agencyId) baseParams.agencyId = agencyId;
+    getNearbyIncidentsFiltered(baseParams)
+      .then((result) => setNearbyIncidents(result.incidents))
       .catch(() => {});
-    return () => { cancelled = true; };
-  }, [locationLoading, userLocation]);
+  }, [userLocation, agencyId]);
+
+  const refreshNearbyIncidentsDebounced = useCallback(() => {
+    if (nearbyRefreshTimeoutRef.current) clearTimeout(nearbyRefreshTimeoutRef.current);
+    nearbyRefreshTimeoutRef.current = setTimeout(() => {
+      nearbyRefreshTimeoutRef.current = null;
+      const baseParams: { lat?: number; lng?: number; radiusKm?: number; perPage?: number; agencyId?: string } = { perPage: 50 };
+      if (userLocation) {
+        baseParams.lat = userLocation[0];
+        baseParams.lng = userLocation[1];
+        baseParams.radiusKm = 20;
+      }
+      if (agencyId) baseParams.agencyId = agencyId;
+      getNearbyIncidentsFiltered(baseParams)
+        .then((result) => setNearbyIncidents(result.incidents))
+        .catch(() => {});
+    }, 1500);
+  }, [userLocation, agencyId]);
+
+  // Fetch nearby incidents for map markers (all volunteers)
+  useEffect(() => {
+    if (locationLoading) return;
+    refreshNearbyIncidents();
+  }, [locationLoading, refreshNearbyIncidents]);
+
+  useEffect(() => {
+    return () => {
+      if (nearbyRefreshTimeoutRef.current) {
+        clearTimeout(nearbyRefreshTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // When a mission is assigned to this volunteer (after coordinator confirms
   // verification and creates a mission), auto-navigate to the missions page.
@@ -242,11 +269,20 @@ export default function VolunteerValidation() {
     setSubmitting(true);
     try {
       await submitVerification(incident.id, { decision: "VERIFIED" });
-      toast.success("Incident verified — awaiting coordinator confirmation");
-      const data = await getAssignedIncidents();
-      setAssignments(data);
+      setAssignments((prev) =>
+        prev.map((a) =>
+          a.verificationId === pendingAssignment.verificationId
+            ? { ...a, decision: "VERIFIED", submittedAt: new Date().toISOString() }
+            : a,
+        ),
+      );
+      toast.success("Verification submitted — awaiting coordinator confirmation");
+      getAssignedIncidentsFiltered(agencyId ?? undefined).then(setAssignments).catch(() => {});
+      window.dispatchEvent(new CustomEvent("unitycare:assigned-incidents-changed"));
+      refreshNearbyIncidentsDebounced();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Verification failed");
+      const msg = err instanceof Error ? err.message : "Verification failed";
+      toast.error(msg.includes("Too many requests") ? msg : "Verification failed");
     } finally {
       setSubmitting(false);
     }
@@ -271,10 +307,18 @@ export default function VolunteerValidation() {
       toast.success("Incident marked as false report");
       setShowRejectInput(false);
       setRejectComment("");
-      const data = await getAssignedIncidents();
-      setAssignments(data);
+      setAssignments((prev) =>
+        prev.map((a) =>
+          a.verificationId === pendingAssignment.verificationId
+            ? { ...a, decision: "FALSE_REPORT", submittedAt: new Date().toISOString() }
+            : a,
+        ),
+      );
+      getAssignedIncidentsFiltered(agencyId ?? undefined).then(setAssignments).catch(() => {});
+      refreshNearbyIncidentsDebounced();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Rejection failed");
+      const msg = err instanceof Error ? err.message : "Rejection failed";
+      toast.error(msg.includes("Too many requests") ? msg : "Rejection failed");
     } finally {
       setSubmitting(false);
     }
@@ -293,14 +337,29 @@ export default function VolunteerValidation() {
     setConfirmingId(incidentId);
     try {
       await confirmVerification(incidentId, confirmed, confirmed ? undefined : confirmNote || undefined);
-      toast.success(confirmed ? "Verification confirmed" : "Verification rejected");
+      setAssignments((prev) =>
+        prev.map((a) =>
+          a.incident.id === incidentId
+            ? {
+                ...a,
+                isConfirmed: confirmed,
+                ...(confirmed ? { incident: { ...a.incident, status: "VERIFIED" as const } } : {}),
+              }
+            : a,
+        ),
+      );
+      toast.success(confirmed ? "Verification confirmed — you can create a mission" : "Verification rejected");
       setShowConfirmReject(false);
       setConfirmNote("");
       refreshAssignments();
+      refreshNearbyIncidentsDebounced();
       if (verificationsIncidentId) handleOpenVerifications(verificationsIncidentId);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed");
-    } finally { setConfirmingId(null); }
+      const msg = err instanceof Error ? err.message : "Failed";
+      toast.error(msg.includes("Too many requests") ? msg : "Failed");
+    } finally {
+      setConfirmingId(null);
+    }
   };
 
   const handleRetryVerification = async (incidentId: string, volunteerId: string) => {
@@ -510,7 +569,7 @@ export default function VolunteerValidation() {
                       {"distanceKm" in selectedPinIncident && selectedPinIncident.distanceKm != null && (
                         <p className="text-white/50 text-xs">{selectedPinIncident.distanceKm.toFixed(1)} km from you</p>
                       )}
-                      {isLeadership && selectedPinIncident.status === "REPORTED" && (
+                      {isLeadership && !isMember && selectedPinIncident.status === "REPORTED" && (
                         <button
                           type="button"
                           onClick={async () => {
@@ -519,6 +578,7 @@ export default function VolunteerValidation() {
                               toast.success("Incident accepted for verification");
                               setSelectedPinIncidentId(null);
                               window.dispatchEvent(new CustomEvent("unitycare:assigned-incidents-changed"));
+                              refreshNearbyIncidents();
                             } catch (err) {
                               toast.error(err instanceof Error ? err.message : "Failed to accept");
                             }
@@ -528,7 +588,7 @@ export default function VolunteerValidation() {
                           Accept for Verification
                         </button>
                       )}
-                      {isLeadership && selectedPinIncident.status === "VERIFIED" && (
+                      {isLeadership && !isMember && selectedPinIncident.status === "VERIFIED" && (
                         <button
                           type="button"
                           onClick={() => {
@@ -566,14 +626,32 @@ export default function VolunteerValidation() {
                   {isLeadership && assignments.filter((a) => a.decision != null && a.isConfirmed == null).map((a) => (
                     <div key={a.verificationId} className="mt-2 mx-auto max-w-xs bg-gray-800/80 border border-gray-700 rounded-xl p-3 space-y-2 text-left">
                       <p className="text-white text-sm font-medium">{a.incident.title}</p>
-                      <p className="text-white/60 text-xs">Decision: <span className="font-bold text-white/80">{a.decision}</span></p>
+                      <p className="text-white/60 text-xs">Volunteer decision: <span className="font-bold text-white/80">{a.decision}</span> — confirm to accept</p>
                       {a.comment && <p className="text-white/50 text-xs">{a.comment}</p>}
                       <div className="flex gap-2">
                         <button type="button" onClick={() => handleConfirmVerification(a.incident.id, true)}
-                          disabled={!!confirmingId} className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold">Confirm</button>
+                          disabled={!!confirmingId} className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5">
+                          {confirmingId === a.incident.id ? <Loader2 className="w-3 h-3 animate-spin shrink-0" /> : null}
+                          {confirmingId === a.incident.id ? "Confirming…" : "Confirm"}
+                        </button>
                         <button type="button" onClick={() => handleOpenVerifications(a.incident.id)}
                           className="px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold">Details</button>
                       </div>
+                    </div>
+                  ))}
+                  {isLeadership && assignments.filter((a) => a.isConfirmed === true && a.incident.status === "VERIFIED").map((a) => (
+                    <div key={`mission-${a.verificationId}`} className="mt-2 mx-auto max-w-xs bg-gray-800/80 border border-gray-700 rounded-xl p-3 space-y-2 text-left">
+                      <p className="text-white text-sm font-medium">{a.incident.title}</p>
+                      <p className="text-emerald-400 text-xs font-bold">Verified & Confirmed</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCreateMissionFor({ id: a.incident.id, title: a.incident.title });
+                        }}
+                        className="w-full py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-colors"
+                      >
+                        Create Mission
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -603,12 +681,16 @@ export default function VolunteerValidation() {
                     Assigned
                   </span>
                 )}
-                {nearbyIncidents.length > 0 && (
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-amber-500 flex-shrink-0" />
-                    {nearbyIncidents.length} reported
-                  </span>
-                )}
+                {(() => {
+                  const reportedCount = nearbyIncidents.filter((inc) => inc.status === "REPORTED").length;
+                  if (reportedCount === 0) return null;
+                  return (
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-amber-500 flex-shrink-0" />
+                      {reportedCount} reported
+                    </span>
+                  );
+                })()}
               </div>
               <button
                 type="button"
@@ -627,14 +709,60 @@ export default function VolunteerValidation() {
                 }`}
               >
                 Incidents
-                {nearbyIncidents.length > 0 && (
-                  <span className="px-1.5 py-0.5 rounded-full bg-amber-500/30 text-amber-400 text-[10px] font-bold">
-                    {nearbyIncidents.length}
-                  </span>
-                )}
+                {(() => {
+                  const reportedCount = nearbyIncidents.filter((inc) => inc.status === "REPORTED").length;
+                  if (reportedCount === 0) return null;
+                  return (
+                    <span className="px-1.5 py-0.5 rounded-full bg-amber-500/30 text-amber-400 text-[10px] font-bold">
+                      {reportedCount}
+                    </span>
+                  );
+                })()}
               </button>
             </div>
           </div>
+
+          {/* Left card: pending confirmed verifications ready for mission creation */}
+          {!hasReport && isLeadership && !isMember && (() => {
+            const confirmedNeedingMission = assignments.filter((a) => a.isConfirmed === true && a.incident.status === "VERIFIED");
+            const pendingConfirm = assignments.filter((a) => a.decision != null && a.submittedAt != null && a.isConfirmed == null);
+            if (confirmedNeedingMission.length === 0 && pendingConfirm.length === 0) return null;
+            return (
+              <div className="mt-4 ml-4 mb-6 max-w-sm bg-gray-900/95 border border-gray-800 rounded-xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.7)] space-y-3 pointer-events-auto">
+                {pendingConfirm.length > 0 && (
+                  <p className="text-white/50 text-[10px] uppercase tracking-wider">Submitted — confirm to accept volunteer’s result</p>
+                )}
+                {pendingConfirm.map((a) => (
+                  <div key={a.verificationId} className="p-3 rounded-lg bg-gray-800/80 border border-gray-700 space-y-2">
+                    <p className="text-white text-sm font-medium">{a.incident.title}</p>
+                    <p className="text-white/60 text-xs">Decision: <span className="font-bold text-white/80">{a.decision}</span></p>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => handleConfirmVerification(a.incident.id, true)}
+                        disabled={!!confirmingId} className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5">
+                        {confirmingId === a.incident.id ? <Loader2 className="w-3 h-3 animate-spin shrink-0" /> : null}
+                        {confirmingId === a.incident.id ? "Confirming…" : "Confirm"}
+                      </button>
+                      <button type="button" onClick={() => handleOpenVerifications(a.incident.id)}
+                        className="px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold">Details</button>
+                    </div>
+                  </div>
+                ))}
+                {confirmedNeedingMission.map((a) => (
+                  <div key={`cm-${a.verificationId}`} className="p-3 rounded-lg bg-gray-800/80 border border-gray-700 space-y-2">
+                    <p className="text-white text-sm font-medium">{a.incident.title}</p>
+                    <p className="text-emerald-400 text-xs font-bold">Verified & Confirmed</p>
+                    <button
+                      type="button"
+                      onClick={() => setCreateMissionFor({ id: a.incident.id, title: a.incident.title })}
+                      className="w-full py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-colors"
+                    >
+                      Create Mission
+                    </button>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
 
           {/* Left incident details card when a report exists */}
           {hasReport && incident && (
@@ -711,7 +839,7 @@ export default function VolunteerValidation() {
               </div>
 
               {/* Reject comment input */}
-              {showRejectInput && (
+              {showRejectInput && !isMember && (
                 <div className="space-y-2">
                   <textarea
                     className="w-full rounded-lg bg-gray-950/70 border border-gray-700 text-white text-sm px-3 py-2 min-h-[60px] focus:outline-none focus:border-red-500 placeholder:text-white/30"
@@ -722,35 +850,44 @@ export default function VolunteerValidation() {
                 </div>
               )}
 
-              {/* Accept / Reject buttons */}
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={handleAccept}
-                  disabled={submitting}
-                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-bold transition-colors"
-                >
-                  {submitting ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <CheckCircle className="w-4 h-4" />
-                  )}
-                  ACCEPT
-                </button>
-                <button
-                  type="button"
-                  onClick={handleReject}
-                  disabled={submitting}
-                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg bg-red-600/80 hover:bg-red-700 disabled:opacity-50 text-white text-sm font-bold transition-colors"
-                >
-                  {submitting ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <XCircle className="w-4 h-4" />
-                  )}
-                  REJECT
-                </button>
-              </div>
+              {/* Verify (accept on-site) / Reject buttons — hidden for MEMBER */}
+              {isMember ? (
+                <p className="text-white/40 text-xs pt-2">View only — verification actions require Coordinator or Director role.</p>
+              ) : (
+                <>
+                  <p className="text-white/40 text-[10px] uppercase tracking-wider pt-1">
+                    Verify = confirmed on-site · Reject = false report
+                  </p>
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={handleAccept}
+                      disabled={submitting}
+                      className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-bold transition-colors"
+                    >
+                      {submitting ? (
+                        <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                      ) : (
+                        <CheckCircle className="w-4 h-4 shrink-0" />
+                      )}
+                      {submitting ? "Submitting…" : "Verify"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleReject}
+                      disabled={submitting}
+                      className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg bg-red-600/80 hover:bg-red-700 disabled:opacity-50 text-white text-sm font-bold transition-colors"
+                    >
+                      {submitting ? (
+                        <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                      ) : (
+                        <XCircle className="w-4 h-4 shrink-0" />
+                      )}
+                      {submitting ? "Submitting…" : "Reject"}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -769,7 +906,7 @@ export default function VolunteerValidation() {
                 </button>
               </div>
               <div className="p-4 h-[calc(100%-49px)] overflow-y-auto">
-                <NearbyIncidentsList readOnly={!isLeadership} />
+                <NearbyIncidentsList readOnly={!isLeadership || isMember} />
               </div>
             </div>
           )}

@@ -22,6 +22,11 @@ import type {
   UpdateMemberRoleInput,
 } from "../validators/agency.validator";
 
+/**
+ * List agencies with optional filters. Used by admin (Volunteer Roles, etc.) and
+ * by volunteers (e.g. application form). Non-admin roles only see active
+ * agencies so inactive ones are hidden from volunteers and civilians.
+ */
 export async function listAgencies(
   requesterRole: string,
   query: ListAgenciesQuery,
@@ -29,6 +34,7 @@ export async function listAgencies(
   const { search, isActive, region, page, perPage } = query;
   const skip = (page - 1) * perPage;
 
+  // Admin can filter by isActive or see all; others only see active agencies
   const activeFilter =
     requesterRole === "SUPERADMIN" || requesterRole === "ADMIN"
       ? isActive !== undefined
@@ -78,6 +84,7 @@ export async function listAgencies(
   };
 }
 
+/** Get a single agency by id. Non-admin roles cannot see inactive agencies. */
 export async function getAgency(id: string, requesterRole: string) {
   const agency = await prisma.agency.findUnique({
     where: { id },
@@ -90,7 +97,7 @@ export async function getAgency(id: string, requesterRole: string) {
 
   if (!agency) throw new AgencyNotFoundError();
 
-  // Non-admin roles cannot see inactive agencies
+  // Non-admin roles cannot see inactive agencies (same policy as listAgencies)
   if (
     !agency.isActive &&
     requesterRole !== "SUPERADMIN" &&
@@ -200,8 +207,12 @@ export async function deleteAgency(
   return { message: "Agency deleted." };
 }
 
-// SUPERADMIN/ADMIN: query any agencyId.
-// COORDINATOR/DIRECTOR: always scoped to own agency — route param is ignored.
+/**
+ * List volunteers in an agency (for mission assignment, admin Volunteer Roles, etc.).
+ * Response includes each member's agency role (MEMBER/COORDINATOR/DIRECTOR) so the
+ * UI can show who can be promoted. SUPERADMIN/ADMIN can query any agency;
+ * COORDINATOR/DIRECTOR are restricted to their own agency.
+ */
 export async function listAvailableVolunteers(
   requester: RequesterContext,
   agencyId: string,
@@ -221,7 +232,7 @@ export async function listAvailableVolunteers(
       select: { agencyId: true },
     });
     if (!membership) throw new ForbiddenError();
-    // COORDINATOR/DIRECTOR can only query their own agency
+    // COORDINATOR/DIRECTOR can only query their own agency (route param ignored)
     if (agencyId !== membership.agencyId) throw new ForbiddenError();
     effectiveAgencyId = membership.agencyId;
   }
@@ -232,12 +243,11 @@ export async function listAvailableVolunteers(
   if (!agency) throw new AgencyNotFoundError();
 
   const where = {
-    isAvailable: true,
     user: {
       isActive: true,
       deletedAt: null,
       agencyMemberships: {
-        some: { agencyId: effectiveAgencyId, role: AgencyRole.MEMBER },
+        some: { agencyId: effectiveAgencyId },
       },
       ...(search && {
         name: { contains: search, mode: "insensitive" as const },
@@ -256,7 +266,16 @@ export async function listAvailableVolunteers(
         lastKnownLatitude: true,
         lastKnownLongitude: true,
         user: {
-          select: { id: true, name: true, profileImageUrl: true },
+          select: {
+            id: true,
+            name: true,
+            profileImageUrl: true,
+            agencyMemberships: {
+              where: { agencyId: effectiveAgencyId },
+              select: { role: true },
+              take: 1,
+            },
+          },
         },
         skills: {
           select: { skill: { select: { id: true, name: true } } },
@@ -278,6 +297,7 @@ export async function listAvailableVolunteers(
       availabilityRadiusKm: v.availabilityRadiusKm,
       lastKnownLatitude: v.lastKnownLatitude,
       lastKnownLongitude: v.lastKnownLongitude,
+      role: v.user.agencyMemberships[0]?.role ?? AgencyRole.MEMBER,
       skills: v.skills.map((s) => ({ id: s.skill.id, name: s.skill.name })),
     })),
     pagination: {
@@ -289,8 +309,13 @@ export async function listAvailableVolunteers(
   };
 }
 
-// SUPERADMIN: any agency.
-// DIRECTOR: own agency only — cannot demote self (must always have ≥1 director).
+/**
+ * Update a member's agency role (MEMBER / COORDINATOR / DIRECTOR). Used by admin
+ * (Volunteer Roles) and by agency Directors. Only DIRECTOR (or SUPERADMIN) can
+ * change roles; COORDINATOR cannot, so the frontend hides the role dropdown for
+ * Coordinators. We block demoting the last director so the agency always has
+ * at least one.
+ */
 export async function updateMemberRole(
   requester: RequesterContext,
   agencyId: string,
@@ -301,11 +326,10 @@ export async function updateMemberRole(
   const agency = await prisma.agency.findUnique({ where: { id: agencyId } });
   if (!agency) throw new AgencyNotFoundError();
 
-  // 2. Authorise caller
+  // 2. Authorise caller: only SUPERADMIN or DIRECTOR of this agency
   const isSuperadmin = requester.role === "SUPERADMIN";
 
   if (!isSuperadmin) {
-    // Must be DIRECTOR of this exact agency
     const callerMembership = await prisma.agencyMember.findUnique({
       where: {
         agencyId_userId: { agencyId, userId: requester.id },
@@ -317,7 +341,7 @@ export async function updateMemberRole(
     }
   }
 
-  // 3. Cannot change own role
+  // 3. Cannot change own role (avoid locking yourself out)
   if (requester.id === volunteerId) throw new CannotChangeOwnRoleError();
 
   // 4. Target must be a member of this agency
@@ -327,7 +351,7 @@ export async function updateMemberRole(
   });
   if (!target) throw new AgencyMemberNotFoundError();
 
-  // 5. If demoting the only director → block
+  // 5. Block demoting the last director so the agency always has at least one
   if (target.role === AgencyRole.DIRECTOR && data.role !== "DIRECTOR") {
     const directorCount = await prisma.agencyMember.count({
       where: { agencyId, role: AgencyRole.DIRECTOR },

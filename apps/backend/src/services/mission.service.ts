@@ -79,8 +79,12 @@ function assertTransition(current: MissionStatus, next: MissionStatus): void {
   }
 }
 
-// Returns agencyId for COORDINATOR/DIRECTOR, null for SUPERADMIN.
-// ADMIN, CIVILIAN, MEMBER → ForbiddenError.
+/**
+ * Resolves coordinator-level authority: returns agencyId for COORDINATOR/DIRECTOR,
+ * null for SUPERADMIN. Used by createMission, assignVolunteers, etc. MEMBER has
+ * no coordinator authority, so they get ForbiddenError — the frontend uses
+ * listAssignedMissions for MEMBER and hides History/Team from them.
+ */
 async function resolveCoordinatorAuthority(
   requesterId: string,
   requesterRole: string,
@@ -171,7 +175,12 @@ function broadcastNotificationsToUsers(
   }
 }
 
-// Shared fetch + access control used by all action handlers.
+/**
+ * Shared fetch + access control for mission detail. ADMIN/SUPERADMIN see any
+ * mission; COORDINATOR/DIRECTOR see missions for their agency; MEMBER only
+ * sees missions they are personally assigned to (so they can view mission
+ * detail when they have an assignment but cannot browse agency-wide).
+ */
 async function getMissionWithAuthCheck(
   missionId: string,
   requesterId: string,
@@ -181,9 +190,24 @@ async function getMissionWithAuthCheck(
     where: { id: missionId },
     include: {
       primaryIncident: {
-        select: { id: true, title: true, status: true },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          latitude: true,
+          longitude: true,
+          addressText: true,
+          description: true,
+          category: { select: { id: true, name: true } },
+        },
       },
-      linkedIncidents: { select: { incidentId: true } },
+      linkedIncidents: {
+        include: {
+          incident: {
+            select: { id: true, title: true, status: true },
+          },
+        },
+      },
       assignments: {
         where: { unassignedAt: null },
         include: {
@@ -191,6 +215,16 @@ async function getMissionWithAuthCheck(
         },
       },
       agency: { select: { id: true, name: true } },
+      logs: {
+        include: { actor: { select: { id: true, name: true } } },
+        orderBy: { createdAt: "asc" as const },
+      },
+      report: true,
+      tracking: {
+        orderBy: { recordedAt: "desc" as const },
+        take: 50,
+        include: { volunteer: { select: { id: true, name: true } } },
+      },
     },
   });
 
@@ -206,6 +240,7 @@ async function getMissionWithAuthCheck(
       select: { agencyId: true, role: true },
     });
 
+    // COORDINATOR/DIRECTOR: can see any mission for their agency
     if (membership && ["COORDINATOR", "DIRECTOR"].includes(membership.role)) {
       if (mission.agencyId && mission.agencyId !== membership.agencyId) {
         throw new MissionNotFoundError();
@@ -213,7 +248,7 @@ async function getMissionWithAuthCheck(
       return mission;
     }
 
-    // MEMBER — only missions they are personally assigned to
+    // MEMBER: only missions they are personally assigned to (no agency-wide view)
     const isAssigned = mission.assignments.some(
       (a) => a.assignedTo === requesterId,
     );
@@ -404,7 +439,7 @@ export async function createMission(
     });
 
     return { fullMission, reporterIds };
-  });
+  }, { timeout: 15000 });
 
   // WS broadcasts (after transaction committed)
   broadcastNotificationsToUsers(
@@ -1504,7 +1539,12 @@ export async function resolveIncident(
   });
 }
 
-// listMissions — ADMIN/SUPERADMIN/COORDINATOR/DIRECTOR
+/**
+ * List missions (agency-wide or filtered). Used by admin and by Volunteer
+ * Mission History for COORDINATOR/DIRECTOR. MEMBER cannot call this — they get
+ * 403. The frontend uses listAssignedMissions for MEMBER so they only see their
+ * own assigned missions and History is hidden from MEMBER in the UI.
+ */
 export async function listMissions(
   requesterId: string,
   requesterRole: string,
@@ -1518,6 +1558,7 @@ export async function listMissions(
   if (requesterRole === "SUPERADMIN" || requesterRole === "ADMIN") {
     scopedAgencyId = agencyId;
   } else if (requesterRole === "VOLUNTEER") {
+    // Only COORDINATOR/DIRECTOR can list agency missions; MEMBER gets 403
     const membership = await prisma.agencyMember.findFirst({
       where: {
         userId: requesterId,
@@ -1578,7 +1619,7 @@ export async function listMissions(
   };
 }
 
-// getMission — full mission detail (scoped by role)
+/** Full mission detail; access scoped by role (COORDINATOR/DIRECTOR by agency, MEMBER only if assigned). */
 export async function getMission(
   missionId: string,
   requesterId: string,

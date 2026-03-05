@@ -199,10 +199,13 @@ export async function getAdminOverview(period: string = "30d"): Promise<AdminOve
 export type Agency = {
   id: string;
   name: string;
-  description: string | null;
-  region: string | null;
-  isActive: boolean;
-  memberCount: number;
+  description?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  region?: string | null;
+  isActive?: boolean;
+  createdAt?: string;
+  memberCount?: number;
 };
 
 export type AgenciesListResult = {
@@ -214,21 +217,32 @@ export type AgenciesListResult = {
 
 export async function getAgencies(params?: {
   search?: string;
+  isActive?: boolean;
+  region?: string;
   page?: number;
   perPage?: number;
 }): Promise<AgenciesListResult> {
   const search = new URLSearchParams();
   if (params?.search) search.set("search", params.search);
+  if (params?.isActive !== undefined) search.set("isActive", String(params.isActive));
+  if (params?.region) search.set("region", params.region);
   search.set("page", String(params?.page ?? 1));
   search.set("perPage", String(params?.perPage ?? 100));
 
   const res = await authFetch(`${API_BASE}/agencies?${search.toString()}`);
   const json = await res.json();
   if (!res.ok) {
-    throw new Error(json?.error?.message ?? "Failed to load agencies");
+    const msg = json?.error?.message ?? "Failed to load agencies";
+    const details = json?.error?.details;
+    throw new Error(Array.isArray(details) && details.length > 0 ? `${msg}: ${details.map((d: { message?: string }) => d?.message ?? d).join("; ")}` : msg);
   }
   const data = json?.data;
-  const list: Agency[] = Array.isArray(data) ? data : [];
+  // Backend paginatedResponse sends data = agencies array
+  const list: Agency[] = Array.isArray(data)
+    ? data
+    : data?.agencies && Array.isArray(data.agencies)
+      ? data.agencies
+      : [];
   const pagination = json?.meta?.pagination;
   return {
     agencies: list,
@@ -246,6 +260,9 @@ export type AgencyVolunteer = {
   profileImageUrl: string | null;
   isAvailable: boolean;
   availabilityRadiusKm: number | null;
+  lastKnownLatitude?: number | null;
+  lastKnownLongitude?: number | null;
+  role?: AgencyRole;
   skills: { id: string; name: string }[];
 };
 
@@ -259,24 +276,29 @@ export type AgencyVolunteersResult = {
 
 export async function getAgencyVolunteers(
   agencyId: string,
-  params?: { search?: string; page?: number; perPage?: number },
+  params?: { search?: string; skillId?: string; page?: number; perPage?: number },
 ): Promise<AgencyVolunteersResult> {
   const search = new URLSearchParams();
   if (params?.search) search.set("search", params.search);
+  if (params?.skillId) search.set("skillId", params.skillId);
   search.set("page", String(params?.page ?? 1));
   search.set("perPage", String(params?.perPage ?? 50));
 
   const res = await authFetch(`${API_BASE}/agencies/${agencyId}/volunteers?${search.toString()}`);
   const json = await res.json();
   if (!res.ok) {
-    throw new Error(json?.error?.message ?? "Failed to load volunteers");
+    const msg = json?.error?.message ?? "Failed to load volunteers";
+    const details = json?.error?.details;
+    throw new Error(Array.isArray(details) && details.length > 0 ? `${msg}: ${details.map((d: { message?: string }) => d?.message ?? d).join("; ")}` : msg);
   }
+  // Backend paginatedResponse sends data = volunteers array (controller passes result.volunteers)
   const body = json?.data ?? json;
   const pagination = json?.meta?.pagination;
+  const volunteers = Array.isArray(body) ? body : Array.isArray(body?.volunteers) ? body.volunteers : [];
   return {
-    agencyId: body.agencyId ?? agencyId,
-    volunteers: Array.isArray(body.volunteers) ? body.volunteers : Array.isArray(body) ? body : [],
-    totalRecords: pagination?.totalRecords ?? body.volunteers?.length ?? 0,
+    agencyId: body?.agencyId ?? agencyId,
+    volunteers,
+    totalRecords: pagination?.totalRecords ?? volunteers.length,
     totalPages: pagination?.totalPages ?? 1,
     currentPage: pagination?.currentPage ?? 1,
   };
@@ -306,7 +328,13 @@ export async function updateVolunteerRole(
   });
   const json = await res.json();
   if (!res.ok) {
-    throw new Error(json?.error?.message ?? "Failed to update role");
+    const msg = json?.error?.message ?? "Failed to update role";
+    const code = json?.error?.code;
+    const details = json?.error?.details;
+    const fullMsg = Array.isArray(details) && details.length > 0 ? `${msg}: ${details.map((d: { message?: string }) => d?.message ?? d).join("; ")}` : msg;
+    const err = new Error(fullMsg) as Error & { code?: string };
+    err.code = code;
+    throw err;
   }
   return json?.data ?? json;
 }

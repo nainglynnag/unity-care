@@ -15,7 +15,7 @@ import {
   XCircle,
 } from "lucide-react";
 import {
-  getNearbyIncidents,
+  getNearbyIncidentsFiltered,
   getIncident,
   acceptIncidentForVerification,
   submitVerification,
@@ -23,6 +23,7 @@ import {
   type IncidentDetail,
 } from "@/lib/incidents";
 import { acceptMission, getAssignedMissions } from "@/lib/missions";
+import { getMyAgencyMembership } from "@/lib/agencyTeam";
 import toast from "react-hot-toast";
 
 interface NearbyIncidentsListProps {
@@ -39,6 +40,7 @@ export function NearbyIncidentsList({ className, readOnly = false }: NearbyIncid
   const [totalRecords, setTotalRecords] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [agencyId, setAgencyId] = useState<string | null>(null);
 
   const [selectedIncident, setSelectedIncident] = useState<IncidentDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -62,16 +64,21 @@ export function NearbyIncidentsList({ className, readOnly = false }: NearbyIncid
     );
   }, []);
 
+  useEffect(() => {
+    getMyAgencyMembership().then((m) => setAgencyId(m?.agencyId ?? null));
+  }, []);
+
   const fetchIncidents = useCallback(() => {
     setLoading(true);
     setError(null);
-    const params: Parameters<typeof getNearbyIncidents>[0] = { perPage: 50 };
+    const params: { lat?: number; lng?: number; radiusKm?: number; perPage?: number; agencyId?: string } = { perPage: 50 };
     if (userLocation) {
       params.lat = userLocation[0];
       params.lng = userLocation[1];
       params.radiusKm = 100;
     }
-    getNearbyIncidents(params)
+    if (agencyId) params.agencyId = agencyId;
+    getNearbyIncidentsFiltered(params)
       .then((result) => {
         setIncidents(result.incidents);
         setTotalRecords(result.totalRecords);
@@ -80,7 +87,7 @@ export function NearbyIncidentsList({ className, readOnly = false }: NearbyIncid
         setError(err instanceof Error ? err.message : "Failed to load incidents"),
       )
       .finally(() => setLoading(false));
-  }, [userLocation]);
+  }, [userLocation, agencyId]);
 
   useEffect(() => {
     if (locationLoading) return;

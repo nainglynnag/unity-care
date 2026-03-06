@@ -282,6 +282,8 @@ export default function VolunteerMissions() {
   const [elapsed, setElapsed] = useState("00:00:00");
   const { location: userLocation, refresh: refreshLocation } = useCurrentLocation();
   const trackingRef = useRef<number | undefined>(undefined);
+  const trackingPushInFlightRef = useRef(false);
+  const trackingLastPushTimeRef = useRef<number>(0);
   const [latestTracking, setLatestTracking] = useState<MissionTrackingPoint[]>([]);
   const [myAgencyRole, setMyAgencyRole] = useState<AgencyRole | null>(null);
 
@@ -358,14 +360,29 @@ export default function VolunteerMissions() {
     if (!mission || !userLocation) return;
     const trackable = ["EN_ROUTE", "ON_SITE", "IN_PROGRESS"];
     if (!trackable.includes(mission.status)) return;
+    const MIN_TRACKING_INTERVAL_MS = 15_000;
     const push = () => {
+      if (trackingPushInFlightRef.current) return;
+      const now = Date.now();
+      if (now - trackingLastPushTimeRef.current < MIN_TRACKING_INTERVAL_MS) return;
+      trackingPushInFlightRef.current = true;
       navigator.geolocation?.getCurrentPosition(
-        (pos) => pushTracking(mission.id, pos.coords.latitude, pos.coords.longitude).catch(() => {}),
-        () => {},
+        (pos) => {
+          pushTracking(mission.id, pos.coords.latitude, pos.coords.longitude)
+            .then(() => {
+              trackingLastPushTimeRef.current = Date.now();
+            })
+            .catch(() => {})
+            .finally(() => {
+              trackingPushInFlightRef.current = false;
+            });
+        },
+        () => {
+          trackingPushInFlightRef.current = false;
+        },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 },
       );
     };
-    push();
     trackingRef.current = window.setInterval(push, 15000);
     return () => {
       if (trackingRef.current) clearInterval(trackingRef.current);
@@ -791,7 +808,7 @@ export default function VolunteerMissions() {
         </div>
       </div>
 
-      <div className="flex-1 flex min-h-0">
+      <div className="flex-1 flex flex-col min-h-0 lg:flex-row">
         <div className="flex-1 flex flex-col min-w-0 border-r border-gray-800">
           <div className="flex-1 min-h-[240px] relative bg-gray-900">
             <MapcnMap theme="dark" className="h-full w-full" viewport={{ center: mapCenter, zoom: 14 }}>
@@ -870,7 +887,7 @@ export default function VolunteerMissions() {
           </div>
         </div>
 
-        <div className="w-80 flex-shrink-0 flex flex-col bg-gray-900/80 border-l border-gray-800">
+        <div className="w-full lg:w-80 flex-shrink-0 flex flex-col bg-gray-900/80 border-t lg:border-t-0 lg:border-l border-gray-800">
           <div className="bg-red-600 px-4 py-2 text-center">
             <span className="text-white text-sm font-black tracking-wider uppercase">High alert</span>
           </div>

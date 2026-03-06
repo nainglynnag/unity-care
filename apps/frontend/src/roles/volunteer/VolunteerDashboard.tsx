@@ -13,79 +13,61 @@ import {
   Loader2,
   TrendingUp,
   TrendingDown,
+  ChevronRight,
 } from "lucide-react";
 import { VolunteerMapCard } from "@/components/volunteer/VolunteerMapCard";
 import { NearbyIncidentsList } from "@/components/volunteer/NearbyIncidentsList";
 import {
-  getNearbyIncidentsFiltered,
-  getIncident,
-  type NearbyIncident,
-  type IncidentDetail,
-} from "@/lib/incidents";
-import { getVolunteerSummary, type VolunteerSummary } from "@/lib/dashboard";
-import { getAccessToken, API_BASE, authFetch } from "@/lib/api";
-import { getMyAgencyMembership } from "@/lib/agencyTeam";
+  useNearbyIncidentsFiltered,
+  useVolunteerSummary,
+  useIncident,
+  useInvalidateNearbyIncidents,
+} from "@/lib/queries";
+import { useVolunteerAgency } from "@/components/volunteer/VolunteerAgencyContext";
 
 export default function VolunteerDashboard() {
-  const [elapsed, setElapsed] = useState(0);
-  const [sessionActive, setSessionActive] = useState(true);
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   const [locationLoading, setLocationLoading] = useState(true);
   const [locationError, setLocationError] = useState<string | null>(null);
-  const [nearbyIncidents, setNearbyIncidents] = useState<NearbyIncident[]>([]);
-  const [nearbyTotal, setNearbyTotal] = useState(0);
-  const [nearbyLoading, setNearbyLoading] = useState(false);
-  const [nearbyError, setNearbyError] = useState<string | null>(null);
   const [showAllIncidents, setShowAllIncidents] = useState(false);
+  const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
 
-  const [summary, setSummary] = useState<VolunteerSummary | null>(null);
-  const [summaryLoading, setSummaryLoading] = useState(false);
+  const { membership } = useVolunteerAgency();
+  const agencyId = membership?.agencyId ?? null;
+  const isLeadership =
+    membership?.myRole === "COORDINATOR" || membership?.myRole === "DIRECTOR";
 
-  const [selectedIncident, setSelectedIncident] = useState<IncidentDetail | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [detailError, setDetailError] = useState<string | null>(null);
-  const [isLeadership, setIsLeadership] = useState(false);
-  const [agencyId, setAgencyId] = useState<string | null>(null);
+  const nearbyParams = {
+    perPage: 5,
+    ...(userLocation && {
+      lat: userLocation[0],
+      lng: userLocation[1],
+      radiusKm: 50,
+    }),
+    agencyId: agencyId ?? undefined,
+    enabled: !locationLoading,
+  };
+  const {
+    data: nearbyData,
+    isLoading: nearbyLoading,
+    error: nearbyError,
+  } = useNearbyIncidentsFiltered(nearbyParams);
+  const nearbyIncidents = nearbyData?.incidents ?? [];
+  const nearbyTotal = nearbyData?.totalRecords ?? 0;
 
-  useEffect(() => {
-    let cancelled = false;
-    authFetch(`${API_BASE}/auth/me`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((json) => {
-        if (cancelled) return;
-        const memberships = json?.data?.agencyMemberships as Array<{ role: string }> | undefined;
-        if (!memberships?.length) { setIsLeadership(false); return; }
-        setIsLeadership(memberships.some((m) => m.role === "COORDINATOR" || m.role === "DIRECTOR"));
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
+  const { data: summary, isLoading: summaryLoading } = useVolunteerSummary("30d");
+  const { data: selectedIncident, isLoading: detailLoading, error: detailError } = useIncident(
+    selectedIncidentId
+  );
+  const invalidateNearby = useInvalidateNearbyIncidents();
 
-  const openDetail = async (id: string) => {
-    setDetailLoading(true);
-    setDetailError(null);
-    setSelectedIncident(null);
-    try {
-      const detail = await getIncident(id);
-      if (!detail) throw new Error("Incident not found.");
-      setSelectedIncident(detail);
-    } catch (err) {
-      setDetailError(err instanceof Error ? err.message : "Failed to load details.");
-    } finally {
-      setDetailLoading(false);
-    }
+  const openDetail = (id: string) => {
+    setSelectedIncidentId(id);
   };
 
   const closeDetail = () => {
-    setSelectedIncident(null);
-    setDetailError(null);
+    setSelectedIncidentId(null);
   };
-
-  useEffect(() => {
-    if (!sessionActive) return;
-    const t = setInterval(() => setElapsed((e) => e + 1), 1000);
-    return () => clearInterval(t);
-  }, [sessionActive]);
 
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -107,113 +89,40 @@ export default function VolunteerDashboard() {
     );
   }, []);
 
-  // Load incidents: geo-filtered when location available, latest reported otherwise.
-  // Fires once location resolves OR immediately when location is denied/unavailable.
   useEffect(() => {
-    getMyAgencyMembership().then((m) => setAgencyId(m?.agencyId ?? null));
-  }, []);
-
-  useEffect(() => {
-    if (locationLoading) return;
-
-    let cancelled = false;
-    setNearbyLoading(true);
-    setNearbyError(null);
-
-    const params: { lat?: number; lng?: number; radiusKm?: number; perPage?: number; agencyId?: string } = { perPage: 5 };
-    if (userLocation) {
-      params.lat = userLocation[0];
-      params.lng = userLocation[1];
-      params.radiusKm = 50;
-    }
-    if (agencyId) params.agencyId = agencyId;
-
-    getNearbyIncidentsFiltered(params)
-      .then((result) => {
-        if (cancelled) return;
-        setNearbyIncidents(result.incidents);
-        setNearbyTotal(result.totalRecords);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setNearbyError(
-          err instanceof Error ? err.message : "Failed to load nearby incidents",
-        );
-      })
-      .finally(() => {
-        if (!cancelled) setNearbyLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [locationLoading, userLocation, agencyId]);
-
-  // Fetch volunteer dashboard summary (real stats)
-  useEffect(() => {
-    if (!getAccessToken()) return;
-    setSummaryLoading(true);
-    getVolunteerSummary("30d")
-      .then(setSummary)
-      .catch(() => {})
-      .finally(() => setSummaryLoading(false));
-  }, []);
-
-  // Refresh nearby incidents when a new incident is reported (WS signal)
-  useEffect(() => {
-    const handler = () => {
-      const params: { lat?: number; lng?: number; radiusKm?: number; perPage?: number; agencyId?: string } = { perPage: 5 };
-      if (userLocation) {
-        params.lat = userLocation[0];
-        params.lng = userLocation[1];
-        params.radiusKm = 50;
-      }
-      if (agencyId) params.agencyId = agencyId;
-      getNearbyIncidentsFiltered(params)
-        .then((result) => {
-          setNearbyIncidents(result.incidents);
-          setNearbyTotal(result.totalRecords);
-        })
-        .catch(() => {
-          // Silent on real-time refresh failure
-        });
-    };
-
+    const handler = () => invalidateNearby();
     window.addEventListener("unitycare:incident-created", handler as EventListener);
-    return () => {
-      window.removeEventListener("unitycare:incident-created", handler as EventListener);
-    };
-  }, [userLocation, agencyId]);
+    return () => window.removeEventListener("unitycare:incident-created", handler as EventListener);
+  }, [invalidateNearby]);
 
-  const formatTime = (s: number) => {
-    const m = Math.floor(s / 60);
-    const sec = s % 60;
-    return `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
-  };
+  const isAvailable = summary?.isAvailable ?? false;
 
   return (
     <div className="p-6 space-y-6">
-      {/* Top row: Mission time + Map */}
+      {/* Top row: Status + Map */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Active Mission Time */}
-        <div className="bg-gray-800/80 border border-gray-800 rounded-xl p-6 shadow-[0_2px_8px_rgba(0,0,0,0.3)]">
-          <h2 className="text-white/70 text-xs font-semibold tracking-wider mb-3 text-shadow-down">
-            ACTIVE MISSION TIME
+        {/* On-duty status */}
+        <div className="bg-gray-800/80 border border-gray-800 rounded-xl p-6 shadow-[0_2px_8px_rgba(0,0,0,0.3)] flex flex-col min-h-[200px]">
+          <h2 className="text-white/70 text-sm font-semibold tracking-wider mb-4 text-shadow-down">
+            STATUS
           </h2>
-          <div className="flex items-baseline gap-2 mb-4">
-            <span className="text-4xl font-bold text-white">
-              {formatTime(elapsed)}
-            </span>
-            <span className="text-white/60 text-sm">ELAPSED</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setSessionActive(false)}
-            className="flex items-center justify-center gap-2 w-full py-2.5 bg-red-500 hover:bg-red-600 text-white font-semibold text-sm rounded-lg transition-colors"
-          >
-            <X className="w-4 h-4" />
-            TERMINATE SESSION
-          </button>
+          {summaryLoading ? (
+            <div className="flex-1 flex items-center justify-center">
+              <Loader2 className="w-8 h-8 animate-spin text-red-500" />
+            </div>
+          ) : (
+            <div className="flex flex-col">
+              <div className="flex items-center gap-3 mb-4">
+                <span className={`w-4 h-4 rounded-full shrink-0 ${isAvailable ? "bg-emerald-500 shadow-[0_0_12px_rgba(34,197,94,0.5)]" : "bg-gray-500"}`} />
+                <span className={`text-2xl sm:text-3xl font-bold tracking-tight ${isAvailable ? "text-emerald-400" : "text-white/60"}`}>
+                  {isAvailable ? "ON DUTY" : "OFF DUTY"}
+                </span>
+              </div>
+              <p className="text-white/60 text-base leading-relaxed max-w-[240px]">
+                {isAvailable ? "You are available for missions." : "Set yourself available in Profile to receive missions."}
+              </p>
+            </div>
+          )}
         </div>
 
         <VolunteerMapCard
@@ -246,7 +155,7 @@ export default function VolunteerDashboard() {
             </button>
           </div>
           {nearbyError && (
-            <p className="text-xs text-red-400 mb-2">{nearbyError}</p>
+            <p className="text-xs text-red-400 mb-2">{nearbyError.message}</p>
           )}
           <ul className="space-y-4">
             {nearbyIncidents.map((inc) => {
@@ -289,9 +198,10 @@ export default function VolunteerDashboard() {
                         <button
                           type="button"
                           onClick={() => openDetail(inc.id)}
-                          className="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white text-xs font-semibold rounded-lg transition-colors"
+                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-gray-600 bg-gray-800/50 text-white/90 text-xs font-medium tracking-wide hover:border-red-500/60 hover:bg-red-500/10 hover:text-white transition-colors"
                         >
-                          VIEW DETAILS
+                          View details
+                          <ChevronRight className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
@@ -431,7 +341,7 @@ export default function VolunteerDashboard() {
 
             {detailError && (
               <div className="p-8 text-center">
-                <p className="text-red-400 text-sm">{detailError}</p>
+                <p className="text-red-400 text-sm">{detailError.message}</p>
                 <button
                   type="button"
                   onClick={closeDetail}
@@ -519,7 +429,7 @@ export default function VolunteerDashboard() {
                       <p className="text-white/50 text-xs font-semibold uppercase tracking-wider">
                         Attached Media
                       </p>
-                      <div className="grid grid-cols-3 gap-2">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                         {selectedIncident.media.map((m) =>
                           m.mediaType === "IMAGE" ? (
                             <img

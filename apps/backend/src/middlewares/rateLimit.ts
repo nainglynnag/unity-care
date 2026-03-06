@@ -90,6 +90,24 @@ export const signOutLimiter = createLimiter({
   message: "Too many sign-out attempts. Please wait 15 minutes.",
 });
 
+// Auth: GET /me — per-user limit (60/15min). Added so volunteer layout/sidebar/dashboard and
+// syncUserProfile on 401 don't exhaust the global 200/IP limit and cause 429 on auth/me.
+export const authMeLimiter = createLimiter({
+  windowMs: 15 * 60 * 1000,
+  limit: 60,
+  keyGenerator: userKeyGenerator,
+  message: "Too many profile requests. Please slow down.",
+});
+
+// Volunteer profile: GET /me — per-user limit (60/15min). Added so volunteer profile and
+// availability checks don't exhaust the global 200/IP limit and cause 429 on volunteer-profiles/me.
+export const volunteerProfileMeLimiter = createLimiter({
+  windowMs: 15 * 60 * 1000,
+  limit: 60,
+  keyGenerator: userKeyGenerator,
+  message: "Too many volunteer profile requests. Please slow down.",
+});
+
 // Incidents: create
 // Per-user (authenticated) — more precise than per-IP.
 // 10 per user per hour — a civilian in a genuine disaster might report 2-3.

@@ -9,6 +9,9 @@ import {
   Pencil,
   Check,
   X,
+  Crown,
+  Star,
+  User,
 } from "lucide-react";
 import { getCurrentUser, setCurrentUser } from "../../lib/api";
 import {
@@ -19,6 +22,19 @@ import {
 } from "../../lib/volunteerProfile";
 import { updateProfile } from "../../lib/account";
 import { getSkills, type Skill } from "../../lib/referenceData";
+import { getMyAgencyMembership, type AgencyRole } from "../../lib/agencyTeam";
+
+// Same role badge style as Team page
+const ROLE_OPTIONS: { value: AgencyRole; label: string; icon: typeof Crown; bg: string }[] = [
+  { value: "DIRECTOR", label: "Director", icon: Crown, bg: "bg-amber-500/20 text-amber-400" },
+  { value: "COORDINATOR", label: "Coordinator", icon: Star, bg: "bg-blue-500/20 text-blue-400" },
+  { value: "MEMBER", label: "Member", icon: User, bg: "bg-gray-600/30 text-gray-400" },
+];
+
+function getRoleBadge(role: AgencyRole | null) {
+  if (!role) return { label: "Volunteer", icon: User, bg: "bg-gray-600/30 text-gray-400" };
+  return ROLE_OPTIONS.find((r) => r.value === role) ?? ROLE_OPTIONS[2];
+}
 
 const DAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"] as const;
 const SLOTS = ["AM", "PM"] as const;
@@ -65,8 +81,10 @@ export default function VolunteerProfile() {
   const [skillsSaving, setSkillsSaving] = useState(false);
 
   const [user, setUser] = useState(getCurrentUser());
+  const [agencyRole, setAgencyRole] = useState<AgencyRole | null>(null);
   const displayName = user?.name ?? "Volunteer";
   const initials = getInitials(displayName);
+  const roleBadge = getRoleBadge(agencyRole);
 
   useEffect(() => {
     let cancelled = false;
@@ -84,6 +102,10 @@ export default function VolunteerProfile() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    getMyAgencyMembership().then((m) => setAgencyRole(m?.myRole ?? null)).catch(() => {});
   }, []);
 
   // Resolve last known coordinates to a human-readable location when available
@@ -276,7 +298,10 @@ export default function VolunteerProfile() {
           <div className="flex items-center gap-2 pl-2 border-l border-gray-700">
             <div className="text-right hidden sm:block">
               <p className="text-white font-medium text-sm">{displayName}</p>
-              <p className="text-red-500 text-xs font-medium">Volunteer</p>
+              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${roleBadge.bg}`}>
+                <roleBadge.icon className="w-3 h-3" aria-hidden />
+                {roleBadge.label}
+              </span>
             </div>
             <div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center shrink-0 border-2 border-red-500/30">
               <span className="text-white text-sm font-semibold">{initials}</span>
@@ -312,6 +337,10 @@ export default function VolunteerProfile() {
                     {profile?.isAvailable ? "STATUS: ACTIVE / ON-CALL" : "STATUS: OFFLINE"}
                   </span>
                 </div>
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${roleBadge.bg} mb-2 inline-block`}>
+                  <roleBadge.icon className="w-3 h-3" aria-hidden />
+                  {roleBadge.label}
+                </span>
                 <div className="flex items-center gap-2 mb-1">
                   {editingName ? (
                     <div className="flex items-center gap-2">
@@ -513,13 +542,13 @@ export default function VolunteerProfile() {
               <h3 className="text-white font-semibold">Weekly Availability</h3>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
+              <table className="w-full table-fixed border-collapse">
                 <thead>
                   <tr>
                     {DAYS.map((day) => (
                       <th
                         key={day}
-                        className="text-white/70 text-xs font-semibold uppercase tracking-wider pb-2 pr-1 text-center"
+                        className="w-[14.2857%] min-w-0 text-white/70 text-xs font-semibold uppercase tracking-wider pb-2 pr-1 text-center"
                       >
                         {day}
                       </th>
@@ -532,7 +561,7 @@ export default function VolunteerProfile() {
                       {DAYS.map((day) => {
                         const available = MOCK_AVAILABILITY[day]?.[slot] ?? false;
                         return (
-                          <td key={`${day}-${slot}`} className="p-0.5">
+                          <td key={`${day}-${slot}`} className="w-[14.2857%] min-w-0 p-0.5">
                             <div
                               className={`h-8 rounded ${
                                 available ? "bg-red-500/80" : "bg-gray-700/80"

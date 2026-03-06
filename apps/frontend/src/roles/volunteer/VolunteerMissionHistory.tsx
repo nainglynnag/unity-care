@@ -72,11 +72,6 @@ function formatDuration(acceptedAt: string | null, completedAt: string | null) {
 
 const STATUS_FILTERS = [
   { value: "", label: "All" },
-  { value: "CREATED", label: "Created" },
-  { value: "ASSIGNED", label: "Assigned" },
-  { value: "ACCEPTED", label: "Accepted" },
-  { value: "EN_ROUTE", label: "En Route" },
-  { value: "ON_SITE", label: "On Site" },
   { value: "IN_PROGRESS", label: "In Progress" },
   { value: "COMPLETED", label: "Completed" },
   { value: "CLOSED", label: "Closed" },

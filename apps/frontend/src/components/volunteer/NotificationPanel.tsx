@@ -63,7 +63,7 @@ export function NotificationBell() {
 
   useEffect(() => {
     refreshCount();
-    const interval = setInterval(refreshCount, 30000);
+    const interval = setInterval(refreshCount, 60000);
     return () => clearInterval(interval);
   }, [refreshCount]);
 

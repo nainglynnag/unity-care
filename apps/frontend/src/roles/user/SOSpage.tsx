@@ -17,7 +17,11 @@ const EmergencyAlert: React.FC = () => {
     try {
       if (getAccessToken()) {
         const res = await authFetch(`${API_BASE}/auth/me`);
-        if (res.ok) targetPath = '/choosehelp';
+        if (res.ok) {
+          const json = await res.json();
+          const role = json?.data?.role ?? 'CIVILIAN';
+          targetPath = role === 'VOLUNTEER' ? '/volunteer-dashboard' : '/choosehelp';
+        }
       }
     } catch {
       targetPath = '/signin';

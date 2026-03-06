@@ -12,19 +12,19 @@ import VideoCall from "../roles/user/VideoCall";
 import MyIncidents from "../roles/user/MyIncidents";
 import EmergencyProfileView from "../roles/user/EmergencyProfileView";
 import AccountSettings from "../roles/user/AccountSettings";
-import { ProtectedRoute } from "../components/shared/ProtectedRoute";
+import { ProtectedRoute, RedirectVolunteerFromUserPage } from "../components/shared/ProtectedRoute";
 
 export const UserRouteElements = (
   <>
-    {/* Public routes */}
-    <Route path="/" element={<SOSpage />} />
-    <Route path="/signin" element={<Signin />} />
-    <Route path="/signup" element={<SignUp />} />
+    {/* Public routes — redirect logged-in volunteers to volunteer dashboard */}
+    <Route path="/" element={<RedirectVolunteerFromUserPage><SOSpage /></RedirectVolunteerFromUserPage>} />
+    <Route path="/signin" element={<RedirectVolunteerFromUserPage><Signin /></RedirectVolunteerFromUserPage>} />
+    <Route path="/signup" element={<RedirectVolunteerFromUserPage><SignUp /></RedirectVolunteerFromUserPage>} />
 
-    {/* Civilian-protected routes */}
+    {/* Civilian-only: VOLUNTEER cannot access; redirects to /volunteer-dashboard */}
     <Route element={<ProtectedRoute allowedRoles={["CIVILIAN"]} redirectTo="/signin" />}>
       <Route path="/setup-profile" element={<EmergencyProfileSetup />} />
-      <Route path="/choosehelp" element={<ChooseHelp />} />
+      <Route path="/choosehelp" element={<RedirectVolunteerFromUserPage><ChooseHelp /></RedirectVolunteerFromUserPage>} />
       <Route path="/chat" element={<Chat />} />
       <Route path="/map" element={<Map />} />
       <Route path="/completemission" element={<CompleteMission />} />

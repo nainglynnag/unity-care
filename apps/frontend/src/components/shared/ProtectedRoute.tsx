@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Navigate, Outlet } from "react-router-dom";
 import { getAccessToken, getCurrentUser } from "../../lib/api";
 
@@ -42,4 +43,21 @@ function roleHome(role: string): string {
     default:
       return "/choosehelp";
   }
+}
+
+/**
+ * Wrapper for public user (civilian) pages. If the current user is logged in
+ * as VOLUNTEER, redirects to volunteer dashboard so volunteers cannot use
+ * the civilian app flow.
+ */
+export function RedirectVolunteerFromUserPage({ children }: { children: ReactNode }) {
+  const token = getAccessToken();
+  const user = getCurrentUser();
+  const role = user?.role ?? "CIVILIAN";
+
+  if (token && user && role === "VOLUNTEER") {
+    return <Navigate to="/volunteer-dashboard" replace />;
+  }
+
+  return <>{children}</>;
 }

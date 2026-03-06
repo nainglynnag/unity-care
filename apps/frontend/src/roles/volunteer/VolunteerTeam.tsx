@@ -213,8 +213,8 @@ export default function VolunteerTeam() {
           <p className="text-white/50 text-sm">No members found.</p>
         </div>
       ) : (
-        <div className="bg-gray-800/50 border border-gray-800 rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="bg-gray-800/50 border border-gray-800 rounded-xl overflow-hidden overflow-x-auto">
+          <table className="w-full text-sm min-w-[640px]">
             <thead>
               <tr className="border-b border-gray-800">
                 <th className="text-left px-4 py-3 text-white/50 text-xs font-semibold tracking-wider">MEMBER</th>

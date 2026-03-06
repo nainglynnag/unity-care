@@ -219,8 +219,8 @@ export default function AdminVolunteerRoles() {
               <p className="text-white/50 text-sm">No volunteers in this agency.</p>
             </div>
           ) : (
-            <div className="bg-gray-800/50 border border-gray-800 rounded-xl">
-              <table className="w-full text-sm">
+            <div className="bg-gray-800/50 border border-gray-800 rounded-xl overflow-x-auto">
+              <table className="w-full text-sm min-w-[560px]">
                 <thead>
                   <tr className="border-b border-gray-800">
                     <th className="text-left px-4 py-3 text-white/50 text-xs font-semibold tracking-wider">VOLUNTEER</th>

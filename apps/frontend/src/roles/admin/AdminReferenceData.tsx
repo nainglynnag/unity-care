@@ -260,7 +260,7 @@ function SkillsSection() {
                   <td className="px-4 py-3 text-white/60 max-w-xs truncate">{item.description ?? "—"}</td>
                   <td className="px-4 py-3">
                     <ActiveToggle
-                      checked={item.isActive}
+                      checked={item.isActive ?? false}
                       onChange={() => handleToggleActive(item)}
                     />
                   </td>
@@ -491,7 +491,7 @@ function CategoriesSection() {
                   <td className="px-4 py-3 text-white/60 max-w-xs truncate">{item.description ?? "—"}</td>
                   <td className="px-4 py-3">
                     <ActiveToggle
-                      checked={item.isActive}
+                      checked={item.isActive ?? false}
                       onChange={() => handleToggleActive(item)}
                     />
                   </td>
@@ -731,7 +731,7 @@ function AgenciesSection() {
                   <td className="px-4 py-3 text-white/60 max-w-xs truncate">{item.description ?? "—"}</td>
                   <td className="px-4 py-3">
                     <ActiveToggle
-                      checked={item.isActive}
+                      checked={item.isActive ?? false}
                       onChange={() => handleToggleActive(item)}
                     />
                   </td>

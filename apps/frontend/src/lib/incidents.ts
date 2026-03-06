@@ -124,8 +124,13 @@ export async function getIncidentCategories(): Promise<IncidentCategory[]> {
   return Array.isArray(data) ? data : [];
 }
 
-export async function getIncident(incidentId: string): Promise<IncidentDetail | null> {
-  const res = await authFetch(`${API_BASE}/incidents/${incidentId}`);
+export async function getIncident(
+  incidentId: string,
+  options?: { signal?: AbortSignal },
+): Promise<IncidentDetail | null> {
+  const res = await authFetch(`${API_BASE}/incidents/${incidentId}`, {
+    signal: options?.signal,
+  });
   if (!res.ok) return null;
   const json = await res.json();
   return json?.data ?? null;

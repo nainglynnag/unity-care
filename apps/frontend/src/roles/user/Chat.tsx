@@ -43,8 +43,6 @@ function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
-  const [timerStartedAt] = useState(() => new Date());
-  const [timerSeconds, setTimerSeconds] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [location, setLocation] = useState<LocationState>({
     lat: null,
@@ -56,7 +54,13 @@ function Chat() {
   });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollStartRef = useRef<number | null>(null);
+  const pollAbortRef = useRef<AbortController | null>(null);
   const navigate = useNavigate();
+
+  const POLL_INTERVAL_MS = 6000;
+  const POLL_CAP_MS = 10 * 60 * 1000;
 
   const getAttachmentType = (file: File): "image" | "video" | "file" => {
     if (file.type.startsWith("image/")) return "image";
@@ -161,30 +165,85 @@ function Chat() {
   // Fetch incident when incidentId is in state (from ChooseHelp)
   useEffect(() => {
     if (!incidentId) return;
+    const ac = new AbortController();
     let cancelled = false;
-    getIncident(incidentId).then((data) => {
+    getIncident(incidentId, { signal: ac.signal }).then((data) => {
       if (!cancelled) setIncident(data ?? null);
-    });
+    }).catch(() => { /* aborted or failed; ignore so we don't trigger 401 signout after unmount */ });
     return () => {
       cancelled = true;
+      ac.abort();
     };
   }, [incidentId]);
 
-  // Incident timer: count elapsed seconds from when chat was opened
+  // Poll incident until a mission exists (volunteer accepted and mission created).
+  // Abort in-flight requests on unmount or when we stop polling so a late 401 doesn't trigger global signout.
   useEffect(() => {
-    const tick = () => {
-      setTimerSeconds(Math.floor((Date.now() - timerStartedAt.getTime()) / 1000));
+    if (!incidentId) return;
+    const hasMissions = (incident?.missions?.length ?? 0) > 0;
+    if (hasMissions) {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+      pollAbortRef.current?.abort();
+      pollAbortRef.current = null;
+      pollStartRef.current = null;
+      return;
+    }
+    if (incident === null) return;
+    if (pollIntervalRef.current) return;
+    const ac = new AbortController();
+    pollAbortRef.current = ac;
+    pollStartRef.current = Date.now();
+    pollIntervalRef.current = setInterval(() => {
+      if (pollStartRef.current && Date.now() - pollStartRef.current > POLL_CAP_MS) {
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+        }
+        ac.abort();
+        return;
+      }
+      getIncident(incidentId, { signal: ac.signal }).then((data) => {
+        if (data?.missions?.length) {
+          setIncident(data);
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+          }
+          ac.abort();
+        }
+      }).catch(() => { /* aborted or failed */ });
+    }, POLL_INTERVAL_MS);
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+      pollAbortRef.current = null;
+      ac.abort();
+      pollStartRef.current = null;
     };
-    tick();
-    const interval = setInterval(tick, 1000);
-    return () => clearInterval(interval);
-  }, [timerStartedAt]);
+  }, [incidentId, incident]);
 
-  const formatTimer = (totalSeconds: number) => {
-    const m = Math.floor(totalSeconds / 60);
-    const s = totalSeconds % 60;
-    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-  };
+  useEffect(() => {
+    if (!incident?.missions?.[0] || !incidentId) return;
+    const status = incident.missions[0].status;
+    if (status !== "COMPLETED" && status !== "CLOSED") return;
+    const leaderName =
+      incident.missions[0].assignments?.find((a) => a.role === "LEADER")?.assignee?.name ??
+      incident.missions[0].assignments?.[0]?.assignee?.name ??
+      "Volunteer";
+    navigate("/completemission", {
+      replace: true,
+      state: {
+        volunteerName: leaderName,
+        volunteerRole: "Mission leader",
+        incidentId,
+      },
+    });
+  }, [incident, incidentId, navigate]);
 
   const handleSend = () => {
     const trimmed = input.trim();
@@ -210,8 +269,46 @@ function Chat() {
     setPendingAttachments([]);
   };
 
-  const volunteerName =
-    incident?.missions?.[0]?.assignments?.[0]?.assignee?.name ?? null;
+  const leader =
+    incident?.missions?.[0]?.assignments?.find((a) => a.role === "LEADER")?.assignee ??
+    incident?.missions?.[0]?.assignments?.[0]?.assignee ??
+    null;
+  const hasMission = (incident?.missions?.length ?? 0) > 0;
+  const waitingForVolunteer = !!incidentId && incident !== null && !hasMission;
+
+  const missionStatus = incident?.missions?.[0]?.status ?? null;
+  const PROCESS_STAGES = [
+    { key: "en_route", label: "En route" },
+    { key: "at_scene", label: "At scene" },
+    { key: "executing", label: "Executing" },
+    { key: "finish", label: "Finish" },
+  ] as const;
+  const getMissionStageIndex = (status: string | null): number => {
+    if (!status) return -1;
+    switch (status) {
+      case "ASSIGNED":
+      case "ACCEPTED":
+        return 0;
+      case "EN_ROUTE":
+        return 0;
+      case "ON_SITE":
+        return 1;
+      case "IN_PROGRESS":
+        return 2;
+      case "COMPLETED":
+      case "CLOSED":
+        return 3;
+      default:
+        return -1;
+    }
+  };
+  const missionStageIndex = getMissionStageIndex(missionStatus);
+  const hasReachedEnRoute =
+    missionStatus === "EN_ROUTE" ||
+    missionStatus === "ON_SITE" ||
+    missionStatus === "IN_PROGRESS" ||
+    missionStatus === "COMPLETED" ||
+    missionStatus === "CLOSED";
 
   const chatState = () => (incidentId ? { incidentId, primaryContact } : undefined);
   const handleVoiceCall = () => {
@@ -236,13 +333,22 @@ function Chat() {
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col">
       <div className="flex-1 flex min-h-0 relative">
+        {/* Backdrop for sidebar on mobile */}
+        {sidebarOpen && (
+          <div
+            className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+            onClick={() => setSidebarOpen(false)}
+            aria-hidden
+          />
+        )}
         {/* Left: Chat */}
         <div className="flex-1 flex flex-col min-w-0">
           {/* Chat header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800 shrink-0">
+          <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-800 shrink-0">
             <div className="flex items-center gap-2">
               <button
                 type="button"
+                onClick={() => setSidebarOpen(!sidebarOpen)}
                 className="w-8 h-8 flex items-center justify-center text-red-500 hover:bg-gray-800 rounded-lg transition-colors cursor-pointer"
                 aria-label="Toggle sidebar"
               >
@@ -349,7 +455,7 @@ function Chat() {
           </div>
 
           {/* Input */}
-          <div className="px-6 py-4 border-t border-gray-800 shrink-0">
+          <div className="px-4 sm:px-6 py-4 border-t border-gray-800 shrink-0">
             <input
               ref={fileInputRef}
               type="file"
@@ -418,7 +524,7 @@ function Chat() {
 
         {/* Right: Incident Status Sidebar - Sticky */}
         {sidebarOpen && (
-          <div className="w-[360px] shrink-0 border-l border-gray-800 bg-gray-900/50 sticky top-0 h-screen overflow-y-auto transition-all duration-300">
+          <div className="fixed inset-y-0 right-0 z-50 w-full max-w-[360px] border-l border-gray-800 bg-gray-900/95 lg:bg-gray-900/50 sticky lg:static lg:inset-auto lg:z-auto lg:w-[360px] lg:max-w-none shrink-0 h-screen overflow-y-auto transition-all duration-300">
             <div className="p-6">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-white text-lg font-semibold">Incident Status</h2>
@@ -447,19 +553,40 @@ function Chat() {
             </div>
           )}
 
-          {/* Incident Timer */}
-          <div className="bg-gray-800 rounded-xl p-4 mb-4 shadow-lg">
-            <h3 className="text-gray-400 text-sm font-medium mb-2">Incident Timer</h3>
-            <div className="flex items-baseline gap-2">
-              <span className="text-white text-3xl font-bold tabular-nums">
-                {formatTimer(timerSeconds)}
-              </span>
-              <span className="text-green-500 text-sm font-medium">ACTIVE</span>
+          {/* Mission process stages: En route → At scene → Executing → Finish */}
+          {hasMission && (
+            <div className="bg-gray-800 rounded-xl p-4 mb-4 shadow-lg">
+              <h3 className="text-gray-400 text-sm font-medium mb-3">Process</h3>
+              <div className="space-y-2">
+                {PROCESS_STAGES.map((stage, idx) => {
+                  const isReached =
+                    idx <= missionStageIndex && (idx > 0 || hasReachedEnRoute);
+                  const isCurrent = missionStageIndex === idx;
+                  return (
+                    <div
+                      key={stage.key}
+                      className={`flex items-center gap-3 ${isReached ? "text-white" : "text-white/40"}`}
+                    >
+                      <div
+                        className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                          isCurrent
+                            ? "bg-red-500 text-white"
+                            : isReached
+                              ? "bg-emerald-500/80 text-white"
+                              : "bg-gray-600 text-white/50"
+                        }`}
+                      >
+                        {isReached ? (idx + 1) : "—"}
+                      </div>
+                      <span className={`text-sm font-medium ${isCurrent ? "text-red-400" : ""}`}>
+                        {stage.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-            <p className="text-gray-500 text-sm mt-1">
-              Started at {timerStartedAt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
-            </p>
-          </div>
+          )}
 
           {/* Location */}
           <div className="bg-gray-800 rounded-xl p-4 mb-4 shadow-lg">
@@ -498,6 +625,41 @@ function Chat() {
           {/* Response Team / Contact volunteer */}
           <div className="bg-gray-800 rounded-xl p-4 mb-4 shadow-lg">
             <h3 className="text-gray-400 text-sm font-medium mb-3">Contact volunteer</h3>
+            {waitingForVolunteer ? (
+              <div className="mb-4">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center shrink-0">
+                    <svg
+                      className="animate-spin h-5 w-5 text-amber-400"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      />
+                    </svg>
+                  </div>
+                  <p className="text-white font-medium">
+                    Waiting for a volunteer to accept and create a mission
+                  </p>
+                </div>
+                <p className="text-gray-400 text-sm">
+                  You can continue chatting and sharing your location below.
+                </p>
+              </div>
+            ) : (
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 rounded-full bg-gray-700 flex items-center justify-center text-white font-semibold text-lg shrink-0 overflow-hidden">
                 <svg
@@ -529,13 +691,18 @@ function Chat() {
               </div>
               <div>
                 <p className="text-white font-medium">
-                  {volunteerName ?? "Emergency coordinator"}
+                  {leader?.name ?? "Emergency coordinator"}
                 </p>
                 <p className="text-gray-400 text-sm">
-                  {volunteerName ? "Assigned volunteer" : "You can chat, call, or video call"}
+                  {leader
+                    ? (incident?.missions?.[0]?.assignments?.some((a) => a.role === "LEADER")
+                        ? "Mission leader"
+                        : "Assigned volunteer")
+                    : "You can chat, call, or video call"}
                 </p>
               </div>
             </div>
+            )}
             {primaryContact && (
               <div className="mb-4 pt-3 border-t border-gray-700">
                 <p className="text-gray-400 text-xs font-medium mb-1">Emergency contact</p>

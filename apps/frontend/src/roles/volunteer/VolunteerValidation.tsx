@@ -87,7 +87,9 @@ export default function VolunteerValidation() {
   const [createMissionFor, setCreateMissionFor] = useState<{ id: string; title: string } | null>(null);
   const nearbyRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastAssignmentsRefreshRef = useRef<number>(0);
+  const lastRejectedIncidentIdRef = useRef<string | null>(null);
   const ASSIGNMENTS_REFRESH_THROTTLE_MS = 2500;
+  const REFRESH_AFTER_REJECT_DELAY_MS = 500;
 
   const refreshAssignments = useCallback(() => {
     const now = Date.now();
@@ -351,7 +353,28 @@ export default function VolunteerValidation() {
       toast.success(confirmed ? "Verification confirmed — you can create a mission" : "Verification rejected");
       setShowConfirmReject(false);
       setConfirmNote("");
-      refreshAssignments();
+      if (confirmed) {
+        refreshAssignments();
+      } else {
+        // After reject: delay refresh so backend can persist; then patch any stale API data so we don't flash "Create Mission"
+        lastRejectedIncidentIdRef.current = incidentId;
+        setTimeout(() => {
+          getAssignedIncidentsFiltered(agencyId ?? undefined)
+            .then((data) => {
+              const rejectedId = lastRejectedIncidentIdRef.current;
+              lastRejectedIncidentIdRef.current = null;
+              const patched = rejectedId
+                ? data.map((a) =>
+                    a.incident.id === rejectedId ? { ...a, isConfirmed: false as const } : a,
+                  )
+                : data;
+              setAssignments(patched);
+            })
+            .catch(() => {
+              lastRejectedIncidentIdRef.current = null;
+            });
+        }, REFRESH_AFTER_REJECT_DELAY_MS);
+      }
       refreshNearbyIncidentsDebounced();
       if (verificationsIncidentId) handleOpenVerifications(verificationsIncidentId);
     } catch (err) {

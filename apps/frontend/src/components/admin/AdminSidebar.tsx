@@ -8,6 +8,7 @@ import {
   Shield,
   Database,
   BarChart3,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { API_BASE, authFetch, clearAuthTokens, getRefreshToken, getCurrentUser } from "@/lib/api";
@@ -21,9 +22,15 @@ const baseNavItems = [
   { to: "/admin-dashboard/analytics", end: false, label: "Analytics", icon: BarChart3, superadminOnly: false },
 ] as const;
 
-export function AdminSidebar() {
+type AdminSidebarProps = {
+  open?: boolean;
+  onClose?: () => void;
+};
+
+export function AdminSidebar({ open = true, onClose }: AdminSidebarProps) {
   const navigate = useNavigate();
   const user = getCurrentUser();
+  const isMobile = typeof onClose === "function";
 
   const handleLogout = async () => {
     const refreshToken = getRefreshToken();
@@ -43,20 +50,38 @@ export function AdminSidebar() {
   };
 
   return (
-    <aside className="w-56 min-h-screen bg-gray-900 border-r border-gray-800 flex flex-col">
-      <div className="p-5 border-b border-gray-800">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 flex items-center justify-center">
-            <Shield className="w-6 h-6 text-blue-500" />
+    <aside
+      className={cn(
+        "w-56 min-h-screen bg-gray-900 border-r border-gray-800 flex flex-col shrink-0 z-40 transition-transform duration-200 ease-out",
+        isMobile && "fixed inset-y-0 left-0",
+        isMobile && !open && "-translate-x-full"
+      )}
+    >
+      <div className="p-5 border-b border-gray-800 flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 flex items-center justify-center">
+              <Shield className="w-6 h-6 text-blue-500" />
+            </div>
+            <span className="text-white text-xl font-bold">Unity Care</span>
           </div>
-          <span className="text-white text-xl font-bold">Unity Care</span>
+          <p className="text-white/60 text-xs font-medium mt-2 tracking-wider">
+            {user?.role === "SUPERADMIN" ? "SUPER ADMIN" : "ADMIN PANEL"}
+          </p>
         </div>
-        <p className="text-white/60 text-xs font-medium mt-2 tracking-wider">
-          {user?.role === "SUPERADMIN" ? "SUPER ADMIN" : "ADMIN PANEL"}
-        </p>
+        {isMobile && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 rounded-lg text-white/70 hover:text-white hover:bg-gray-800 shrink-0"
+            aria-label="Close menu"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
       </div>
 
-      <nav className="flex-1 py-4 px-3 space-y-0.5">
+      <nav className="flex-1 py-4 px-3 space-y-0.5" onClick={isMobile ? onClose : undefined}>
         {baseNavItems.filter((item) => !item.superadminOnly || user?.role === "SUPERADMIN").map(({ to, end, label, icon: Icon }) => (
           <NavLink
             key={to}

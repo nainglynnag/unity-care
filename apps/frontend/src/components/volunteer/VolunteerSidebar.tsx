@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
 import { NavLink, useNavigate, Link } from "react-router-dom";
-import { LayoutDashboard, ShieldCheck, User, LogOut, LogIn, Radio, History, Users, BarChart3 } from "lucide-react";
+import { LayoutDashboard, ShieldCheck, User, LogOut, LogIn, Radio, History, Users, BarChart3, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { API_BASE, clearAuthTokens, getAccessToken, getRefreshToken, authFetch } from "@/lib/api";
 import { updateAvailability } from "@/lib/volunteerProfile";
 import { NotificationBell } from "./NotificationPanel";
+import { useVolunteerAgency } from "./VolunteerAgencyContext";
 
 const dashboardItem = {
   to: "/volunteer-dashboard",
@@ -24,25 +24,18 @@ const protectedNavItems = [
   { to: "/volunteer-dashboard/profile", end: false, label: "Profile", icon: User },
 ] as const;
 
-export function VolunteerSidebar() {
-  const navigate = useNavigate();
-  const isSignedIn = !!getAccessToken();
-  const [isLeadership, setIsLeadership] = useState(false);
+type VolunteerSidebarProps = {
+  open?: boolean;
+  onClose?: () => void;
+};
 
-  useEffect(() => {
-    if (!isSignedIn) return;
-    let cancelled = false;
-    authFetch(`${API_BASE}/auth/me`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((json) => {
-        if (cancelled) return;
-        const memberships = json?.data?.agencyMemberships as Array<{ role: string }> | undefined;
-        if (!memberships?.length) { setIsLeadership(false); return; }
-        setIsLeadership(memberships.some((m) => m.role === "COORDINATOR" || m.role === "DIRECTOR"));
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [isSignedIn]);
+export function VolunteerSidebar({ open = true, onClose }: VolunteerSidebarProps) {
+  const navigate = useNavigate();
+  const isMobile = typeof onClose === "function";
+  const isSignedIn = !!getAccessToken();
+  const { membership } = useVolunteerAgency();
+  const isLeadership =
+    membership?.myRole === "COORDINATOR" || membership?.myRole === "DIRECTOR";
 
   const handleLogout = async () => {
     if (isSignedIn) {
@@ -71,11 +64,17 @@ export function VolunteerSidebar() {
   };
 
   return (
-    <aside className="w-56 min-h-screen bg-gray-900 border-r border-gray-800 flex flex-col">
+    <aside
+      className={cn(
+        "w-56 min-h-screen bg-gray-900 border-r border-gray-800 flex flex-col shrink-0 z-40 transition-transform duration-200 ease-out",
+        isMobile && "fixed inset-y-0 left-0 lg:relative lg:translate-x-0",
+        isMobile && !open && "-translate-x-full"
+      )}
+    >
       {/* Logo & title */}
-      <div className="p-5 border-b border-gray-800">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 flex items-center justify-center">
+      <div className="p-5 border-b border-gray-800 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-8 h-8 flex items-center justify-center shrink-0">
             <svg
               width="24"
               height="24"
@@ -107,15 +106,25 @@ export function VolunteerSidebar() {
               />
             </svg>
           </div>
-          <span className="text-white text-xl font-bold">Unity Care</span>
+          <div className="min-w-0">
+            <span className="text-white text-xl font-bold block truncate">Unity Care</span>
+            <span className="text-white/60 text-xs font-medium tracking-wider block">VOLUNTEER CENTER</span>
+          </div>
         </div>
-        <p className="text-white/60 text-xs font-medium mt-2 tracking-wider">
-          VOLUNTEER CENTER
-        </p>
+        {isMobile && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 rounded-lg text-white/70 hover:text-white hover:bg-gray-800 lg:hidden shrink-0"
+            aria-label="Close menu"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
       </div>
 
-      {/* Nav */}
-      <nav className="flex-1 py-4 px-3 space-y-0.5">
+      {/* Nav — close drawer on nav click (mobile) */}
+      <nav className="flex-1 py-4 px-3 space-y-0.5" onClick={isMobile ? onClose : undefined}>
         <NavLink
           to={dashboardItem.to}
           end={dashboardItem.end}

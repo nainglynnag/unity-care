@@ -7,7 +7,6 @@ import {
   LogOut,
   Shield,
   Database,
-  BarChart3,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -19,7 +18,6 @@ const baseNavItems = [
   { to: "/admin-dashboard/applications", end: false, label: "Applications", icon: FileCheck, superadminOnly: false },
   { to: "/admin-dashboard/volunteer-roles", end: false, label: "Volunteer Roles", icon: UserCog, superadminOnly: true },
   { to: "/admin-dashboard/reference-data", end: false, label: "Reference Data", icon: Database, superadminOnly: true },
-  { to: "/admin-dashboard/analytics", end: false, label: "Analytics", icon: BarChart3, superadminOnly: false },
 ] as const;
 
 type AdminSidebarProps = {
@@ -65,9 +63,6 @@ export function AdminSidebar({ open = true, onClose }: AdminSidebarProps) {
             </div>
             <span className="text-white text-xl font-bold">Unity Care</span>
           </div>
-          <p className="text-white/60 text-xs font-medium mt-2 tracking-wider">
-            {user?.role === "SUPERADMIN" ? "SUPER ADMIN" : "ADMIN PANEL"}
-          </p>
         </div>
         {isMobile && (
           <button
@@ -104,8 +99,18 @@ export function AdminSidebar({ open = true, onClose }: AdminSidebarProps) {
 
       <div className="p-4 border-t border-gray-800 space-y-3">
         {user && (
-          <div className="px-2">
-            <p className="text-white text-sm font-medium truncate">{user.name}</p>
+          <div className="px-2 space-y-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="text-white text-sm font-medium truncate">{user.name}</p>
+              <span
+                className={cn(
+                  "shrink-0 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider",
+                  user.role === "SUPERADMIN" ? "bg-purple-500/20 text-purple-400" : "bg-blue-500/20 text-blue-400"
+                )}
+              >
+                {user.role === "SUPERADMIN" ? "Super Admin" : "Admin"}
+              </span>
+            </div>
             <p className="text-white/40 text-xs truncate">{user.email}</p>
           </div>
         )}

@@ -194,6 +194,24 @@ export async function getAdminOverview(period: string = "30d"): Promise<AdminOve
   return json?.data ?? json;
 }
 
+export type AdminHealth = {
+  period: string;
+  registrationTrend: { bucket: string; civilians: number; volunteers: number }[];
+};
+
+export async function getAdminHealth(period: string = "30d"): Promise<AdminHealth> {
+  const res = await authFetch(`${API_BASE}/dashboard/admin/health?period=${period}`);
+  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(json?.error?.message ?? "Failed to load health");
+  }
+  const data = json?.data ?? json;
+  return {
+    period: data?.period ?? period,
+    registrationTrend: Array.isArray(data?.registrationTrend) ? data.registrationTrend : [],
+  };
+}
+
 // ── Agencies ──
 
 export type Agency = {

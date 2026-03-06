@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import CheckIcon from "@mui/icons-material/Check";
 import StarIcon from "@mui/icons-material/Star";
+import { getIncident } from "../../lib/incidents";
 
 function CompleteMission() {
   const navigate = useNavigate();
@@ -9,14 +10,40 @@ function CompleteMission() {
     volunteerName?: string;
     volunteerRole?: string;
     volunteerRating?: number;
+    volunteerProfileImageUrl?: string | null;
+    incidentId?: string;
   } | null;
 
   const [rating, setRating] = useState<number>(0);
   const [hoveredRating, setHoveredRating] = useState<number>(0);
+  const [volunteerImageFailed, setVolunteerImageFailed] = useState(false);
+  const [volunteerName, setVolunteerName] = useState(locationState?.volunteerName ?? "Sarah Martinez");
+  const [volunteerRole, setVolunteerRole] = useState(locationState?.volunteerRole ?? "Certified First Responder");
+  const [volunteerProfileImageUrl, setVolunteerProfileImageUrl] = useState<string | null>(
+    locationState?.volunteerProfileImageUrl ?? null
+  );
 
-  const volunteerName = locationState?.volunteerName ?? "Sarah Martinez";
-  const volunteerRole = locationState?.volunteerRole ?? "Certified First Responder";
   const volunteerRating = locationState?.volunteerRating ?? 4.8;
+  const showVolunteerImage = !!volunteerProfileImageUrl && !volunteerImageFailed;
+  const volunteerInitials = volunteerName
+    ? volunteerName.trim().split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("")
+    : "";
+
+  // Fetch incident when we have incidentId so we get the volunteer's profile image from the API (same as VolunteerProfile/account).
+  useEffect(() => {
+    const incidentId = locationState?.incidentId;
+    if (!incidentId) return;
+    getIncident(incidentId).then((data) => {
+      if (!data?.missions?.[0]) return;
+      const mission = data.missions[0];
+      const leader = mission.assignments?.find((a) => a.role === "LEADER")?.assignee ?? mission.assignments?.[0]?.assignee;
+      if (leader) {
+        setVolunteerName(leader.name ?? "Volunteer");
+        setVolunteerRole("Mission leader");
+        if (leader.profileImageUrl != null) setVolunteerProfileImageUrl(leader.profileImageUrl);
+      }
+    });
+  }, [locationState?.incidentId]);
 
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col">
@@ -74,11 +101,23 @@ function CompleteMission() {
         <div className="w-full max-w-xs mb-8">
           <div className="border border-red-500/60 rounded-xl p-6 flex flex-col items-center text-center">
             {/* Avatar */}
-            <div className="w-16 h-16 rounded-full bg-gray-800 flex items-center justify-center mb-3 border-2 border-red-500/30">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-white">
-                <path d="M20 21V19C20 17.9391 19.5786 16.9217 18.8284 16.1716C18.0783 15.4214 17.0609 15 16 15H8C6.93913 15 5.92172 15.4214 5.17157 16.1716C4.42143 16.9217 4 17.9391 4 19V21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                <circle cx="12" cy="7" r="4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+            <div className="w-16 h-16 rounded-full bg-gray-800 flex items-center justify-center mb-3 border-2 border-red-500/30 overflow-hidden text-white font-semibold text-lg">
+              {showVolunteerImage ? (
+                <img
+                  src={volunteerProfileImageUrl!}
+                  alt=""
+                  className="w-full h-full object-cover"
+                  referrerPolicy="no-referrer"
+                  onError={() => setVolunteerImageFailed(true)}
+                />
+              ) : volunteerInitials ? (
+                <span>{volunteerInitials}</span>
+              ) : (
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-white">
+                  <path d="M20 21V19C20 17.9391 19.5786 16.9217 18.8284 16.1716C18.0783 15.4214 17.0609 15 16 15H8C6.93913 15 5.92172 15.4214 5.17157 16.1716C4.42143 16.9217 4 17.9391 4 19V21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  <circle cx="12" cy="7" r="4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              )}
             </div>
             
             {/* Name */}

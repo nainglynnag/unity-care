@@ -12,15 +12,25 @@ type CurrentUser = {
   hasVolunteerProfile?: boolean;
 };
 
+const EMERGENCY_PROFILE_IMAGE_KEY = 'emergency-profile-image-url';
+
+function getEmergencyProfileImageUrl(userId: string | undefined): string {
+  if (!userId || typeof window === 'undefined') return '';
+  return localStorage.getItem(`${EMERGENCY_PROFILE_IMAGE_KEY}-${userId}`) ?? '';
+}
+
 const Header: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [profileImageFailed, setProfileImageFailed] = useState(false);
+  const [emergencyProfileImageUrl, setEmergencyProfileImageUrl] = useState('');
   const menuRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
 
-  const showProfileImage = user?.profileImageUrl && !profileImageFailed;
+  const userId = user?.id ?? user?.sub;
+  const avatarUrl = user?.profileImageUrl || (user?.role === 'CIVILIAN' && emergencyProfileImageUrl) || null;
+  const showProfileImage = avatarUrl && !profileImageFailed;
 
   const toggleMenu = () => {
     setIsMenuOpen(!isMenuOpen);
@@ -49,7 +59,23 @@ const Header: React.FC = () => {
 
   useEffect(() => {
     setProfileImageFailed(false);
-  }, [user?.id, user?.profileImageUrl]);
+  }, [user?.id, user?.profileImageUrl, emergencyProfileImageUrl]);
+
+  useEffect(() => {
+    if (user?.role === 'CIVILIAN' && userId) {
+      setEmergencyProfileImageUrl(getEmergencyProfileImageUrl(userId));
+    } else {
+      setEmergencyProfileImageUrl('');
+    }
+  }, [user?.role, userId]);
+
+  useEffect(() => {
+    const handleEmergencyProfileImageUpdated = () => {
+      if (userId) setEmergencyProfileImageUrl(getEmergencyProfileImageUrl(userId));
+    };
+    window.addEventListener('unitycare:emergency-profile-image-updated', handleEmergencyProfileImageUpdated);
+    return () => window.removeEventListener('unitycare:emergency-profile-image-updated', handleEmergencyProfileImageUpdated);
+  }, [userId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -142,10 +168,11 @@ const Header: React.FC = () => {
 
   return (
     <header className="w-full bg-gray-900 px-6 py-4 flex items-center justify-between border-b border-gray-800 relative">
-      {/* Left side - Logo */}
-      <div className="flex items-center gap-2">
-        <div className="w-8 h-8 flex items-center justify-center">
-          <svg
+      {/* Left side - Logo + Emergency Profile (civilian) */}
+      <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 flex items-center justify-center">
+            <svg
             width="24"
             height="24"
             viewBox="0 0 24 24"
@@ -175,8 +202,9 @@ const Header: React.FC = () => {
               strokeLinejoin="round"
             />
           </svg>
+          </div>
+          <span className="text-white text-xl font-bold">Unity Care</span>
         </div>
-        <span className="text-white text-xl font-bold">Unity Care</span>
       </div>
 
       {/* Right side - User icon with dropdown */}
@@ -186,9 +214,9 @@ const Header: React.FC = () => {
           className="w-9 h-9 flex items-center justify-center hover:bg-gray-800 rounded-full transition-colors duration-200"
         >
           <div className="w-8 h-8 rounded-full bg-red-500 flex items-center justify-center overflow-hidden">
-            {showProfileImage ? (
+            {showProfileImage && avatarUrl ? (
               <img
-                src={user.profileImageUrl!}
+                src={avatarUrl}
                 alt=""
                 className="w-full h-full object-cover"
                 referrerPolicy="no-referrer"
@@ -213,9 +241,9 @@ const Header: React.FC = () => {
               <div className="flex flex-col items-center">
                 {/* Profile Picture */}
                 <div className="w-16 h-16 rounded-full bg-gray-600 flex items-center justify-center mb-3 overflow-hidden">
-                  {showProfileImage ? (
+                  {showProfileImage && avatarUrl ? (
                     <img
-                      src={user.profileImageUrl!}
+                      src={avatarUrl}
                       alt=""
                       className="w-full h-full object-cover"
                       referrerPolicy="no-referrer"

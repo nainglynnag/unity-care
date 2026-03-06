@@ -44,6 +44,7 @@ function Chat() {
   const [input, setInput] = useState("");
   const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [volunteerImageFailed, setVolunteerImageFailed] = useState(false);
   const [location, setLocation] = useState<LocationState>({
     lat: null,
     lng: null,
@@ -231,15 +232,15 @@ function Chat() {
     if (!incident?.missions?.[0] || !incidentId) return;
     const status = incident.missions[0].status;
     if (status !== "COMPLETED" && status !== "CLOSED") return;
-    const leaderName =
-      incident.missions[0].assignments?.find((a) => a.role === "LEADER")?.assignee?.name ??
-      incident.missions[0].assignments?.[0]?.assignee?.name ??
-      "Volunteer";
+    const leaderAssignment = incident.missions[0].assignments?.find((a) => a.role === "LEADER")?.assignee ?? incident.missions[0].assignments?.[0]?.assignee;
+    const leaderName = leaderAssignment?.name ?? "Volunteer";
+    const leaderProfileImageUrl = leaderAssignment?.profileImageUrl ?? undefined;
     navigate("/completemission", {
       replace: true,
       state: {
         volunteerName: leaderName,
         volunteerRole: "Mission leader",
+        volunteerProfileImageUrl: leaderProfileImageUrl,
         incidentId,
       },
     });
@@ -274,41 +275,16 @@ function Chat() {
     incident?.missions?.[0]?.assignments?.[0]?.assignee ??
     null;
   const hasMission = (incident?.missions?.length ?? 0) > 0;
-  const waitingForVolunteer = !!incidentId && incident !== null && !hasMission;
+  const showVolunteerImage = leader?.profileImageUrl && !volunteerImageFailed;
+  const volunteerInitials = leader?.name
+    ? leader.name.trim().split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("")
+    : "";
 
-  const missionStatus = incident?.missions?.[0]?.status ?? null;
-  const PROCESS_STAGES = [
-    { key: "en_route", label: "En route" },
-    { key: "at_scene", label: "At scene" },
-    { key: "executing", label: "Executing" },
-    { key: "finish", label: "Finish" },
-  ] as const;
-  const getMissionStageIndex = (status: string | null): number => {
-    if (!status) return -1;
-    switch (status) {
-      case "ASSIGNED":
-      case "ACCEPTED":
-        return 0;
-      case "EN_ROUTE":
-        return 0;
-      case "ON_SITE":
-        return 1;
-      case "IN_PROGRESS":
-        return 2;
-      case "COMPLETED":
-      case "CLOSED":
-        return 3;
-      default:
-        return -1;
-    }
-  };
-  const missionStageIndex = getMissionStageIndex(missionStatus);
-  const hasReachedEnRoute =
-    missionStatus === "EN_ROUTE" ||
-    missionStatus === "ON_SITE" ||
-    missionStatus === "IN_PROGRESS" ||
-    missionStatus === "COMPLETED" ||
-    missionStatus === "CLOSED";
+  useEffect(() => {
+    setVolunteerImageFailed(false);
+  }, [leader?.id, leader?.profileImageUrl]);
+
+  const waitingForVolunteer = !!incidentId && incident !== null && !hasMission;
 
   const chatState = () => (incidentId ? { incidentId, primaryContact } : undefined);
   const handleVoiceCall = () => {
@@ -553,41 +529,6 @@ function Chat() {
             </div>
           )}
 
-          {/* Mission process stages: En route → At scene → Executing → Finish */}
-          {hasMission && (
-            <div className="bg-gray-800 rounded-xl p-4 mb-4 shadow-lg">
-              <h3 className="text-gray-400 text-sm font-medium mb-3">Process</h3>
-              <div className="space-y-2">
-                {PROCESS_STAGES.map((stage, idx) => {
-                  const isReached =
-                    idx <= missionStageIndex && (idx > 0 || hasReachedEnRoute);
-                  const isCurrent = missionStageIndex === idx;
-                  return (
-                    <div
-                      key={stage.key}
-                      className={`flex items-center gap-3 ${isReached ? "text-white" : "text-white/40"}`}
-                    >
-                      <div
-                        className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
-                          isCurrent
-                            ? "bg-red-500 text-white"
-                            : isReached
-                              ? "bg-emerald-500/80 text-white"
-                              : "bg-gray-600 text-white/50"
-                        }`}
-                      >
-                        {isReached ? (idx + 1) : "—"}
-                      </div>
-                      <span className={`text-sm font-medium ${isCurrent ? "text-red-400" : ""}`}>
-                        {stage.label}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
           {/* Location */}
           <div className="bg-gray-800 rounded-xl p-4 mb-4 shadow-lg">
             <h3 className="text-gray-400 text-sm font-medium mb-2">Location</h3>
@@ -662,32 +603,44 @@ function Chat() {
             ) : (
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 rounded-full bg-gray-700 flex items-center justify-center text-white font-semibold text-lg shrink-0 overflow-hidden">
-                <svg
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="text-white"
-                >
-                  <path
-                    d="M20 21V19C20 17.9391 19.5786 16.9217 18.8284 16.1716C18.0783 15.4214 17.0609 15 16 15H8C6.93913 15 5.92172 15.4214 5.17157 16.1716C4.42143 16.9217 4 17.9391 4 19V21"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
+                {showVolunteerImage ? (
+                  <img
+                    src={leader!.profileImageUrl!}
+                    alt=""
+                    className="w-full h-full object-cover"
+                    referrerPolicy="no-referrer"
+                    onError={() => setVolunteerImageFailed(true)}
                   />
-                  <circle
-                    cx="12"
-                    cy="7"
-                    r="4"
+                ) : volunteerInitials ? (
+                  <span>{volunteerInitials}</span>
+                ) : (
+                  <svg
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
                     fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="text-white"
+                  >
+                    <path
+                      d="M20 21V19C20 17.9391 19.5786 16.9217 18.8284 16.1716C18.0783 15.4214 17.0609 15 16 15H8C6.93913 15 5.92172 15.4214 5.17157 16.1716C4.42143 16.9217 4 17.9391 4 19V21"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <circle
+                      cx="12"
+                      cy="7"
+                      r="4"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                )}
               </div>
               <div>
                 <p className="text-white font-medium">

@@ -305,7 +305,7 @@ export async function getIncidentById(
               assignments: {
                 select: {
                   role: true,
-                  assignee: { select: { id: true, name: true } },
+                  assignee: { select: { id: true, name: true, profileImageUrl: true } },
                 },
               },
               tracking: {
@@ -338,6 +338,7 @@ export async function getIncidentById(
                       name: true,
                       email: true,
                       phone: true,
+                      profileImageUrl: true,
                     },
                   },
                 },

@@ -39,7 +39,7 @@ export type CreateIncidentResponse = {
 
 export type IncidentMissionAssignment = {
   role: string;
-  assignee: { id: string; name: string; email?: string; phone?: string | null };
+  assignee: { id: string; name: string; email?: string; phone?: string | null; profileImageUrl?: string | null };
 };
 export type IncidentMission = {
   id: string;

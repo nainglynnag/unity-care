@@ -12,6 +12,7 @@ const VolunteerMissionHistory = lazy(() => import("../roles/volunteer/VolunteerM
 const VolunteerValidation = lazy(() => import("../roles/volunteer/VolunteerValidation"));
 const VolunteerTeam = lazy(() => import("../roles/volunteer/VolunteerTeam"));
 const VolunteerAnalytics = lazy(() => import("../roles/volunteer/VolunteerAnalytics"));
+const VolunteerCompleteMission = lazy(() => import("../roles/volunteer/VolunteerCompleteMission"));
 
 function LazyWrap({ children }: { children: React.ReactNode }) {
   return <Suspense fallback={null}>{children}</Suspense>;
@@ -31,6 +32,7 @@ export const VolunteerRouteElements = (
         <Route path="team" element={<LazyWrap><VolunteerTeam /></LazyWrap>} />
         <Route path="analytics" element={<LazyWrap><VolunteerAnalytics /></LazyWrap>} />
         <Route path="profile" element={<LazyWrap><VolunteerProfile /></LazyWrap>} />
+        <Route path="complete-mission" element={<LazyWrap><VolunteerCompleteMission /></LazyWrap>} />
       </Route>
     </Route>
   </>

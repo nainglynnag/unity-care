@@ -555,7 +555,7 @@ export default function VolunteerMissions() {
       toast.success("Completion report submitted");
       setShowCompletion(false);
       window.dispatchEvent(new CustomEvent("unitycare:mission-completed", { detail: { missionId: mission.id } }));
-      await fetchMission();
+      navigate("/volunteer-dashboard/complete-mission", { replace: true });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to submit");
     } finally {
@@ -585,8 +585,8 @@ export default function VolunteerMissions() {
 
   if (!mission) {
     return (
-      <div className="h-full flex items-center justify-center p-6">
-        <div className="text-center space-y-4 max-w-sm">
+      <div className="h-full min-h-[70vh] flex items-center justify-center p-6">
+        <div className="text-center space-y-4 max-w-sm mx-auto">
           <div className="w-16 h-16 rounded-full bg-gray-800 flex items-center justify-center mx-auto">
             <Shield className="w-8 h-8 text-white/20" />
           </div>
@@ -630,8 +630,8 @@ export default function VolunteerMissions() {
         <div className="px-6 py-4 border-b border-gray-800">
           <h1 className="text-white text-xl font-black tracking-wide">NEW MISSION ASSIGNMENT</h1>
         </div>
-        <div className="flex-1 flex items-center justify-center p-6">
-          <div className="w-full max-w-lg space-y-6">
+        <div className="flex-1 flex items-center justify-center p-6 min-h-0">
+          <div className="w-full max-w-lg space-y-6 mx-auto">
             <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
               <div className="bg-red-500/10 border-b border-red-500/20 px-6 py-4 flex items-center gap-3">
                 <AlertTriangle className="w-5 h-5 text-red-500" />

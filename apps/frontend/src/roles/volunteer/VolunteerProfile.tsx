@@ -68,11 +68,13 @@ export default function VolunteerProfile() {
   const [lastLocationLoading, setLastLocationLoading] = useState(false);
   const [user, setUser] = useState(getCurrentUser());
   const [agencyRole, setAgencyRole] = useState<AgencyRole | null>(null);
+  const [profileImageFailed, setProfileImageFailed] = useState(false);
   const profileCardRef = useRef<HTMLDivElement>(null);
   const displayName = user?.name ?? "Volunteer";
 
   const [showEditForm, setShowEditForm] = useState(false);
   const [editName, setEditName] = useState("");
+  const [editProfileImageUrl, setEditProfileImageUrl] = useState("");
   const [editRadius, setEditRadius] = useState("");
   const [editSkillIds, setEditSkillIds] = useState<string[]>([]);
   const [editIsAvailable, setEditIsAvailable] = useState(false);
@@ -81,6 +83,7 @@ export default function VolunteerProfile() {
   const [editFormLoadingSkills, setEditFormLoadingSkills] = useState(false);
   const initials = getInitials(displayName);
   const roleBadge = getRoleBadge(agencyRole);
+  const showProfileImage = user?.profileImageUrl && !profileImageFailed;
 
   useEffect(() => {
     let cancelled = false;
@@ -183,6 +186,7 @@ export default function VolunteerProfile() {
   const openEditForm = () => {
     setError("");
     setEditName(displayName);
+    setEditProfileImageUrl(user?.profileImageUrl ?? "");
     setEditRadius(String(profile?.availabilityRadiusKm ?? ""));
     setEditSkillIds(profile?.skills?.map((s) => s.skill?.id).filter(Boolean) as string[] ?? []);
     setEditIsAvailable(profile?.isAvailable ?? false);
@@ -206,11 +210,25 @@ export default function VolunteerProfile() {
     setError("");
     try {
       const nameTrimmed = editName.trim();
-      if (nameTrimmed && nameTrimmed !== displayName) {
-        const updated = await updateProfile({ name: nameTrimmed });
+      const imageUrlTrimmed = editProfileImageUrl.trim();
+      const needsProfileUpdate =
+        (nameTrimmed && nameTrimmed !== displayName) ||
+        (imageUrlTrimmed !== (user?.profileImageUrl ?? ""));
+      if (needsProfileUpdate) {
+        const payload: { name?: string; profileImageUrl?: string } = {};
+        if (nameTrimmed && nameTrimmed !== displayName) payload.name = nameTrimmed;
+        if (imageUrlTrimmed !== (user?.profileImageUrl ?? "")) {
+          payload.profileImageUrl = imageUrlTrimmed || undefined;
+        }
+        const updated = await updateProfile(payload);
         const prev = getCurrentUser();
-        setCurrentUser({ ...prev, name: updated.name });
-        setUser({ ...prev, name: updated.name });
+        setCurrentUser({
+          ...prev,
+          name: updated.name,
+          profileImageUrl: updated.profileImageUrl ?? prev?.profileImageUrl,
+        });
+        setUser((u) => (u ? { ...u, name: updated.name, profileImageUrl: updated.profileImageUrl ?? u.profileImageUrl } : u));
+        if (imageUrlTrimmed !== (user?.profileImageUrl ?? "")) setProfileImageFailed(false);
       }
       const radiusNum = Number(editRadius);
       if (!isNaN(radiusNum) && radiusNum > 0) {
@@ -291,6 +309,19 @@ export default function VolunteerProfile() {
                   placeholder="Your name"
                   disabled={editFormSaving}
                 />
+              </div>
+              <div>
+                <label htmlFor="edit-profile-image-url" className="block text-white/80 text-sm font-medium mb-1.5">Profile image URL</label>
+                <input
+                  id="edit-profile-image-url"
+                  type="url"
+                  value={editProfileImageUrl}
+                  onChange={(e) => setEditProfileImageUrl(e.target.value)}
+                  className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-white/40 focus:outline-none focus:border-red-500"
+                  placeholder="https://example.com/your-photo.jpg"
+                  disabled={editFormSaving}
+                />
+                <p className="text-white/50 text-xs mt-1">Paste a link to your profile photo. Leave empty to keep current.</p>
               </div>
               <div>
                 <label htmlFor="edit-radius" className="block text-white/80 text-sm font-medium mb-1.5">Availability radius (km)</label>
@@ -402,8 +433,17 @@ export default function VolunteerProfile() {
                 {roleBadge.label}
               </span>
             </div>
-            <div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center shrink-0 border-2 border-red-500/30">
-              <span className="text-white text-sm font-semibold">{initials}</span>
+            <div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center shrink-0 border-2 border-red-500/30 overflow-hidden">
+              {showProfileImage ? (
+                <img
+                  src={user!.profileImageUrl!}
+                  alt=""
+                  className="w-full h-full object-cover"
+                  onError={() => setProfileImageFailed(true)}
+                />
+              ) : (
+                <span className="text-white text-sm font-semibold">{initials}</span>
+              )}
             </div>
           </div>
         </div>
@@ -568,8 +608,17 @@ export default function VolunteerProfile() {
         <div className="space-y-6">
           {/* Profile photo card */}
           <div className="bg-gray-800/80 border border-gray-800 rounded-xl p-6 flex flex-col items-center shadow-[0_2px_8px_rgba(0,0,0,0.3)]">
-            <div className="w-16 h-16 rounded-full bg-gray-700 border border-gray-600 flex items-center justify-center shrink-0">
-              <span className="text-lg font-medium text-white/90">{initials}</span>
+            <div className="w-16 h-16 rounded-full bg-gray-700 border border-gray-600 flex items-center justify-center shrink-0 overflow-hidden">
+              {showProfileImage ? (
+                <img
+                  src={user!.profileImageUrl!}
+                  alt=""
+                  className="w-full h-full object-cover"
+                  onError={() => setProfileImageFailed(true)}
+                />
+              ) : (
+                <span className="text-lg font-medium text-white/90">{initials}</span>
+              )}
             </div>
             <p className="text-white font-medium mt-3 text-center">{displayName}</p>
           </div>

@@ -225,10 +225,7 @@ export async function listAvailableVolunteers(
 
   if (requester.role !== "SUPERADMIN" && requester.role !== "ADMIN") {
     const membership = await prisma.agencyMember.findFirst({
-      where: {
-        userId: requester.id,
-        role: { in: [AgencyRole.COORDINATOR, AgencyRole.DIRECTOR] },
-      },
+      where: { userId: requester.id },
       select: { agencyId: true },
     });
     if (!membership) throw new ForbiddenError();

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Bell,
   Calendar,
@@ -7,7 +7,6 @@ import {
   Wrench,
   Loader2,
   Pencil,
-  Check,
   X,
   Crown,
   Star,
@@ -67,22 +66,19 @@ export default function VolunteerProfile() {
   const [availabilityUpdating, setAvailabilityUpdating] = useState(false);
   const [lastLocationLabel, setLastLocationLabel] = useState<string | null>(null);
   const [lastLocationLoading, setLastLocationLoading] = useState(false);
-  const [editingName, setEditingName] = useState(false);
-  const [nameInput, setNameInput] = useState("");
-  const [nameSaving, setNameSaving] = useState(false);
-
-  const [editingRadius, setEditingRadius] = useState(false);
-  const [radiusInput, setRadiusInput] = useState("");
-  const [radiusSaving, setRadiusSaving] = useState(false);
-
-  const [editingSkills, setEditingSkills] = useState(false);
-  const [allSkills, setAllSkills] = useState<Skill[]>([]);
-  const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
-  const [skillsSaving, setSkillsSaving] = useState(false);
-
   const [user, setUser] = useState(getCurrentUser());
   const [agencyRole, setAgencyRole] = useState<AgencyRole | null>(null);
+  const profileCardRef = useRef<HTMLDivElement>(null);
   const displayName = user?.name ?? "Volunteer";
+
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editRadius, setEditRadius] = useState("");
+  const [editSkillIds, setEditSkillIds] = useState<string[]>([]);
+  const [editIsAvailable, setEditIsAvailable] = useState(false);
+  const [editFormSkills, setEditFormSkills] = useState<Skill[]>([]);
+  const [editFormSaving, setEditFormSaving] = useState(false);
+  const [editFormLoadingSkills, setEditFormLoadingSkills] = useState(false);
   const initials = getInitials(displayName);
   const roleBadge = getRoleBadge(agencyRole);
 
@@ -184,80 +180,56 @@ export default function VolunteerProfile() {
     }
   };
 
-  const handleSaveName = async () => {
-    const trimmed = nameInput.trim();
-    if (!trimmed || trimmed === displayName) {
-      setEditingName(false);
-      return;
-    }
-    setNameSaving(true);
+  const openEditForm = () => {
     setError("");
-    try {
-      const updated = await updateProfile({ name: trimmed });
-      const prev = getCurrentUser();
-      const next = { ...prev, name: updated.name };
-      setCurrentUser(next);
-      setUser(next);
-      setEditingName(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update name");
-    } finally {
-      setNameSaving(false);
-    }
+    setEditName(displayName);
+    setEditRadius(String(profile?.availabilityRadiusKm ?? ""));
+    setEditSkillIds(profile?.skills?.map((s) => s.skill?.id).filter(Boolean) as string[] ?? []);
+    setEditIsAvailable(profile?.isAvailable ?? false);
+    setShowEditForm(true);
+    setEditFormLoadingSkills(true);
+    getSkills()
+      .then((list) => setEditFormSkills(list.filter((s) => s.isActive)))
+      .catch(() => setEditFormSkills([]))
+      .finally(() => setEditFormLoadingSkills(false));
   };
 
-  const handleStartEditRadius = () => {
-    setRadiusInput(String(profile?.availabilityRadiusKm ?? ""));
-    setEditingRadius(true);
-  };
-
-  const handleSaveRadius = async () => {
-    const num = Number(radiusInput);
-    if (!radiusInput || isNaN(num) || num <= 0) {
-      setEditingRadius(false);
-      return;
-    }
-    setRadiusSaving(true);
-    setError("");
-    try {
-      const updated = await updateVolunteerProfile({ availabilityRadiusKm: num });
-      setProfile(updated);
-      setEditingRadius(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update radius");
-    } finally {
-      setRadiusSaving(false);
-    }
-  };
-
-  const handleStartEditSkills = async () => {
-    if (allSkills.length === 0) {
-      const skills = await getSkills();
-      setAllSkills(skills.filter((s) => s.isActive));
-    }
-    setSelectedSkillIds(
-      profile?.skills?.map((s) => s.skill?.id).filter(Boolean) as string[] ?? [],
-    );
-    setEditingSkills(true);
-  };
-
-  const toggleSkill = (id: string) => {
-    setSelectedSkillIds((prev) =>
+  const toggleEditFormSkill = (id: string) => {
+    setEditSkillIds((prev) =>
       prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id],
     );
   };
 
-  const handleSaveSkills = async () => {
-    setSkillsSaving(true);
+  const handleSubmitEditForm = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setEditFormSaving(true);
     setError("");
     try {
-      const updated = await updateVolunteerProfile({ skillIds: selectedSkillIds });
-      setProfile(updated);
-      setEditingSkills(false);
+      const nameTrimmed = editName.trim();
+      if (nameTrimmed && nameTrimmed !== displayName) {
+        const updated = await updateProfile({ name: nameTrimmed });
+        const prev = getCurrentUser();
+        setCurrentUser({ ...prev, name: updated.name });
+        setUser({ ...prev, name: updated.name });
+      }
+      const radiusNum = Number(editRadius);
+      if (!isNaN(radiusNum) && radiusNum > 0) {
+        const updated = await updateVolunteerProfile({
+          availabilityRadiusKm: radiusNum,
+          skillIds: editSkillIds,
+        });
+        setProfile(updated);
+      } else {
+        const updated = await updateVolunteerProfile({ skillIds: editSkillIds });
+        setProfile(updated);
+      }
+      const updatedProfile = await updateAvailability({ isAvailable: editIsAvailable });
+      setProfile(updatedProfile);
+      setShowEditForm(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update skills");
+      setError(err instanceof Error ? err.message : "Failed to update profile");
     } finally {
-      setSkillsSaving(false);
+      setEditFormSaving(false);
     }
   };
 
@@ -284,10 +256,137 @@ export default function VolunteerProfile() {
 
   return (
     <div className="p-6 space-y-6">
+      {/* Edit profile modal */}
+      {showEditForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={() => !editFormSaving && setShowEditForm(false)}>
+          <div
+            className="bg-gray-900 border border-gray-700 rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <form onSubmit={handleSubmitEditForm} className="p-6 space-y-5">
+              <div className="flex items-center justify-between">
+                <h2 className="text-white text-lg font-bold">Edit profile</h2>
+                <button
+                  type="button"
+                  onClick={() => !editFormSaving && setShowEditForm(false)}
+                  className="p-2 rounded-lg text-white/60 hover:text-white hover:bg-gray-800 transition-colors"
+                  aria-label="Close"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              {error && (
+                <div className="bg-amber-500/20 border border-amber-500/50 rounded-lg px-3 py-2 text-amber-400 text-sm">
+                  {error}
+                </div>
+              )}
+              <div>
+                <label htmlFor="edit-name" className="block text-white/80 text-sm font-medium mb-1.5">Name</label>
+                <input
+                  id="edit-name"
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-white/40 focus:outline-none focus:border-red-500"
+                  placeholder="Your name"
+                  disabled={editFormSaving}
+                />
+              </div>
+              <div>
+                <label htmlFor="edit-radius" className="block text-white/80 text-sm font-medium mb-1.5">Availability radius (km)</label>
+                <input
+                  id="edit-radius"
+                  type="number"
+                  min={1}
+                  value={editRadius}
+                  onChange={(e) => setEditRadius(e.target.value)}
+                  className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-white/40 focus:outline-none focus:border-red-500"
+                  placeholder="e.g. 25"
+                  disabled={editFormSaving}
+                />
+              </div>
+              <div>
+                <span className="block text-white/80 text-sm font-medium mb-1.5">Availability status</span>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editIsAvailable}
+                    onChange={(e) => setEditIsAvailable(e.target.checked)}
+                    className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-500 focus:ring-red-500"
+                    disabled={editFormSaving}
+                  />
+                  <span className="text-white text-sm">Active / on-call</span>
+                </label>
+              </div>
+              <div>
+                <span className="block text-white/80 text-sm font-medium mb-1.5">Skills</span>
+                {editFormLoadingSkills ? (
+                  <p className="text-white/50 text-sm">Loading skills…</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto p-1">
+                    {editFormSkills.map((skill) => (
+                      <label
+                        key={skill.id}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm cursor-pointer transition-colors ${
+                          editSkillIds.includes(skill.id)
+                            ? "bg-red-500/20 text-red-400 border-red-500/40"
+                            : "bg-gray-800 text-white/70 border-gray-600 hover:border-gray-500"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={editSkillIds.includes(skill.id)}
+                          onChange={() => toggleEditFormSkill(skill.id)}
+                          className="sr-only"
+                          disabled={editFormSaving}
+                        />
+                        {skill.name}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => !editFormSaving && setShowEditForm(false)}
+                  className="flex-1 px-4 py-2.5 rounded-lg bg-gray-800 text-white/90 hover:bg-gray-700 text-sm font-medium transition-colors"
+                  disabled={editFormSaving}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2.5 rounded-lg bg-red-500 text-white hover:bg-red-600 text-sm font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  disabled={editFormSaving}
+                >
+                  {editFormSaving ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Saving…
+                    </>
+                  ) : (
+                    "Save changes"
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Page header bar */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <h1 className="text-white text-xl font-semibold">Volunteer Profile</h1>
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={openEditForm}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 text-sm font-semibold transition-colors"
+          >
+            <Pencil className="w-4 h-4" />
+            Edit profile
+          </button>
           <button
             type="button"
             className="p-2 text-white/70 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
@@ -320,7 +419,7 @@ export default function VolunteerProfile() {
         {/* Left column: Summary + Weekly Availability */}
         <div className="lg:col-span-2 space-y-6">
           {/* Profile summary */}
-          <div className="bg-gray-800/80 border border-gray-800 rounded-xl p-6 shadow-[0_2px_8px_rgba(0,0,0,0.3)]">
+          <div ref={profileCardRef} className="bg-gray-800/80 border border-gray-800 rounded-xl p-6 shadow-[0_2px_8px_rgba(0,0,0,0.3)]">
             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2 mb-2">
@@ -341,90 +440,13 @@ export default function VolunteerProfile() {
                   <roleBadge.icon className="w-3 h-3" aria-hidden />
                   {roleBadge.label}
                 </span>
-                <div className="flex items-center gap-2 mb-1">
-                  {editingName ? (
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={nameInput}
-                        onChange={(e) => setNameInput(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && handleSaveName()}
-                        className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white text-lg font-bold focus:outline-none focus:border-red-500 w-48"
-                        autoFocus
-                        disabled={nameSaving}
-                      />
-                      {nameSaving ? (
-                        <Loader2 className="w-4 h-4 animate-spin text-red-500" />
-                      ) : (
-                        <>
-                          <button type="button" onClick={handleSaveName} className="text-emerald-400 hover:text-emerald-300">
-                            <Check className="w-4 h-4" />
-                          </button>
-                          <button type="button" onClick={() => setEditingName(false)} className="text-white/40 hover:text-white/70">
-                            <X className="w-4 h-4" />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  ) : (
-                    <>
-                      <h2 className="text-white text-2xl font-bold">{displayName}</h2>
-                      <button
-                        type="button"
-                        onClick={() => { setNameInput(displayName); setEditingName(true); }}
-                        className="text-white/30 hover:text-white/70 transition-colors"
-                        title="Edit name"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                    </>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 text-white/70 text-sm">
-                  {editingRadius ? (
-                    <div className="flex items-center gap-2">
-                      <span>Radius:</span>
-                      <input
-                        type="number"
-                        min="1"
-                        value={radiusInput}
-                        onChange={(e) => setRadiusInput(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && handleSaveRadius()}
-                        className="bg-gray-700 border border-gray-600 rounded px-2 py-0.5 text-white text-sm focus:outline-none focus:border-red-500 w-20"
-                        autoFocus
-                        disabled={radiusSaving}
-                      />
-                      <span>km</span>
-                      {radiusSaving ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin text-red-500" />
-                      ) : (
-                        <>
-                          <button type="button" onClick={handleSaveRadius} className="text-emerald-400 hover:text-emerald-300">
-                            <Check className="w-3.5 h-3.5" />
-                          </button>
-                          <button type="button" onClick={() => setEditingRadius(false)} className="text-white/40 hover:text-white/70">
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  ) : (
-                    <>
-                      <span>
-                        {profile?.availabilityRadiusKm != null
-                          ? `Availability radius: ${profile.availabilityRadiusKm} km`
-                          : "Volunteer"}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={handleStartEditRadius}
-                        className="text-white/30 hover:text-white/70 transition-colors"
-                        title="Edit radius"
-                      >
-                        <Pencil className="w-3 h-3" />
-                      </button>
-                    </>
-                  )}
+                <h2 className="text-white text-2xl font-bold mb-1">{displayName}</h2>
+                <div className="text-white/70 text-sm">
+                  <span>
+                    {profile?.availabilityRadiusKm != null
+                      ? `Availability radius: ${profile.availabilityRadiusKm} km`
+                      : "Volunteer"}
+                  </span>
                 </div>
                 {profile?.lastKnownLatitude != null &&
                   profile?.lastKnownLongitude != null && (
@@ -438,66 +460,18 @@ export default function VolunteerProfile() {
                           )}, ${profile.lastKnownLongitude.toFixed(5)}`}
                     </p>
                   )}
-                <div className="mt-3">
-                  {editingSkills ? (
-                    <div className="space-y-2">
-                      <div className="flex flex-wrap gap-2">
-                        {allSkills.map((s) => (
-                          <button
-                            key={s.id}
-                            type="button"
-                            onClick={() => toggleSkill(s.id)}
-                            disabled={skillsSaving}
-                            className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
-                              selectedSkillIds.includes(s.id)
-                                ? "bg-red-500/30 text-red-300 border border-red-500/50"
-                                : "bg-gray-700 text-white/50 border border-transparent hover:text-white/80"
-                            }`}
-                          >
-                            {s.name}
-                          </button>
-                        ))}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {skillsSaving ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin text-red-500" />
-                        ) : (
-                          <>
-                            <button type="button" onClick={handleSaveSkills} className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1">
-                              <Check className="w-3.5 h-3.5" /> Save
-                            </button>
-                            <button type="button" onClick={() => setEditingSkills(false)} className="text-xs text-white/40 hover:text-white/70 flex items-center gap-1">
-                              <X className="w-3.5 h-3.5" /> Cancel
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <div className="flex flex-wrap gap-2">
-                        {skills.length > 0 ? (
-                          skills.map((name) => (
-                            <span
-                              key={name}
-                              className="px-2.5 py-1 bg-gray-700 text-white/90 text-xs font-medium rounded-md"
-                            >
-                              {name}
-                            </span>
-                          ))
-                        ) : (
-                          <span className="text-white/30 text-xs">No skills</span>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleStartEditSkills}
-                        className="text-white/30 hover:text-white/70 transition-colors shrink-0"
-                        title="Edit skills"
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {skills.length > 0 ? (
+                    skills.map((name) => (
+                      <span
+                        key={name}
+                        className="px-2.5 py-1 bg-gray-700 text-white/90 text-xs font-medium rounded-md"
                       >
-                        <Pencil className="w-3 h-3" />
-                      </button>
-                    </div>
+                        {name}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-white/30 text-xs">No skills</span>
                   )}
                 </div>
                 <div className="flex items-center gap-2 mt-3">

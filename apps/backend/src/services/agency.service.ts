@@ -224,13 +224,19 @@ export async function listAvailableVolunteers(
   let effectiveAgencyId = agencyId;
 
   if (requester.role !== "SUPERADMIN" && requester.role !== "ADMIN") {
-    const membership = await prisma.agencyMember.findFirst({
-      where: { userId: requester.id },
-      select: { agencyId: true },
+    // Updated: look up membership for the *requested* agencyId (not arbitrary first membership).
+    // Previously used findFirst({ where: { userId } }) which could return a different agency when
+    // the user belongs to multiple agencies, causing agencyId !== membership.agencyId → 403 on Team page.
+    const membership = await prisma.agencyMember.findUnique({
+      where: {
+        agencyId_userId: { agencyId, userId: requester.id },
+      },
+      select: { agencyId: true, role: true },
     });
     if (!membership) throw new ForbiddenError();
-    // COORDINATOR/DIRECTOR can only query their own agency (route param ignored)
-    if (agencyId !== membership.agencyId) throw new ForbiddenError();
+    if (membership.role !== AgencyRole.COORDINATOR && membership.role !== AgencyRole.DIRECTOR) {
+      throw new ForbiddenError();
+    }
     effectiveAgencyId = membership.agencyId;
   }
 

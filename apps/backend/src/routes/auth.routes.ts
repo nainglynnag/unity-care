@@ -7,7 +7,6 @@ import {
   loginLimiter,
   refreshLimiter,
   signOutLimiter,
-  authMeLimiter,
 } from "../middlewares/rateLimit";
 
 const router = Router();
@@ -20,7 +19,7 @@ router.post("/refresh", refreshLimiter, authController.refresh);
 
 // Protected — authenticate first so req.user is populated for user-keyed limiters.
 // authMeLimiter: per-user 60/15min so GET /me doesn't rely only on global 200/IP (fixes 429 in volunteer layout).
-router.get("/me", authenticate, authMeLimiter, authController.me);
+router.get("/me", authenticate, authController.me);
 router.post(
   "/signout",
   authenticate,

@@ -7,7 +7,6 @@ import {
   loginLimiter,
   refreshLimiter,
   signOutLimiter,
-  authMeLimiter,
 } from "../middlewares/rateLimit";
 
 const router = Router();

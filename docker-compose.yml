@@ -2,12 +2,11 @@
 # UnityCare — Docker Compose
 #
 # Services:
-#   api — Express + WebSocket backend (Bun runtime)
+#   api      — Express + WebSocket backend (Bun runtime)
+#   frontend — React SPA served by nginx
 #
 # The backend connects to a cloud-hosted PostgreSQL database via DATABASE_URL
 # in apps/backend/.env. No local database container is needed.
-#
-# Frontend will be added here later as a second service.
 #
 # Usage:
 #   Start:           docker compose up --build
@@ -33,20 +32,21 @@ services:
       # WebSocket uses the same port (ws://localhost:3000/ws)
       # No extra port needed — WS is an HTTP upgrade on port 3000
 
-  # ── Frontend (placeholder — uncomment when ready) ───────────────────────────
-  # frontend:
-  #   build:
-  #     context:    ./apps/frontend
-  #     dockerfile: Dockerfile
-  #   container_name: unitycare_frontend
-  #   restart: unless-stopped
-  #   ports:
-  #     - "5173:80"
-  #   depends_on:
-  #     - api
-  #   environment:
-  #     VITE_API_URL: "http://localhost:3000/api/v1"
-  #     VITE_WS_URL:  "ws://localhost:3000/ws"
+  # ── Frontend ────────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      # Build context is monorepo root so Dockerfile can reach bun.lock
+      context:    .
+      dockerfile: apps/frontend/Dockerfile
+      args:
+        VITE_API_URL: "http://localhost:3000/api/v1"
+        VITE_WS_URL:  "ws://localhost:3000/ws"
+    container_name: unitycare_frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
 
 # ── Network ─────────────────────────────────────────────────────────────────
 # All services join this network automatically.

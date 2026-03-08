@@ -9,8 +9,9 @@ node_modules
 .git
 .gitignore
 
-# ── Frontend (not needed for backend image) ──
-apps/frontend
+# ── Frontend build artefacts — rebuilt inside Docker ──
+apps/frontend/node_modules
+apps/frontend/dist
 
 # ── Backend build artefacts — rebuilt inside Docker ──
 apps/backend/dist

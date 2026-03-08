@@ -41,7 +41,7 @@ export async function getMe(userId: string) {
       profileImageUrl: true,
       isActive: true,
       createdAt: true,
-      lastLoginAt: true,
+      updatedAt: true,
       roles: { select: { role: { select: { name: true } } } },
       agencyMemberships: {
         select: {
@@ -73,6 +73,7 @@ export async function updateProfile(userId: string, data: UpdateProfileInput) {
       ...(data.profileImageUrl !== undefined && {
         profileImageUrl: data.profileImageUrl,
       }),
+      ...(data.phone !== undefined && { phone: data.phone }),
     },
     select: {
       id: true,
@@ -237,7 +238,7 @@ export async function listUsers(query: ListUsersQuery) {
         isActive: true,
         createdAt: true,
         deletedAt: true,
-        lastLoginAt: true,
+        updatedAt: true,
         roles: { select: { role: { select: { name: true } } } },
         agencyMemberships: {
           select: {

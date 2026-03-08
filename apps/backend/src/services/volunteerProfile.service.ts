@@ -3,11 +3,7 @@ import type {
   UpdateVolunteerProfileInput,
   UpdateAvailabilityInput,
 } from "../validators/volunteerProfile.validator";
-import {
-  ProfileNotFoundError,
-  InvalidSkillIdsError,
-  NotAnApprovedVolunteerError,
-} from "../utils/errors";
+import { ProfileNotFoundError, InvalidSkillIdsError } from "../utils/errors";
 
 // Get the volunteer profile for the current user
 export async function getVolunteerProfile(userId: string) {
@@ -83,12 +79,6 @@ export async function updateAvailability(
     where: { userId },
   });
   if (!existing) throw new ProfileNotFoundError();
-
-  // Approved application check
-  const approvedApplication = await prisma.volunteerApplication.findFirst({
-    where: { userId, status: "APPROVED" },
-  });
-  if (!approvedApplication) throw new NotAnApprovedVolunteerError();
 
   // Update
   const updated = await prisma.volunteerProfile.update({

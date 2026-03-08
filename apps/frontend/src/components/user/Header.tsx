@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { API_BASE, authFetch, clearAuthTokens, getAccessToken, getCurrentUser, setCurrentUser } from '../lib/api';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { API_BASE, authFetch, clearAuthTokens, getAccessToken, getRefreshToken, getCurrentUser, setCurrentUser } from '../../lib/api';
 
 type CurrentUser = {
   sub?: string;
@@ -9,16 +9,28 @@ type CurrentUser = {
   name?: string;
   email?: string;
   profileImageUrl?: string | null;
+  hasVolunteerProfile?: boolean;
 };
+
+const EMERGENCY_PROFILE_IMAGE_KEY = 'emergency-profile-image-url';
+
+function getEmergencyProfileImageUrl(userId: string | undefined): string {
+  if (!userId || typeof window === 'undefined') return '';
+  return localStorage.getItem(`${EMERGENCY_PROFILE_IMAGE_KEY}-${userId}`) ?? '';
+}
 
 const Header: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [profileImageFailed, setProfileImageFailed] = useState(false);
+  const [emergencyProfileImageUrl, setEmergencyProfileImageUrl] = useState('');
   const menuRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+  const location = useLocation();
 
-  const showProfileImage = user?.profileImageUrl && !profileImageFailed;
+  const userId = user?.id ?? user?.sub;
+  const avatarUrl = user?.profileImageUrl || (user?.role === 'CIVILIAN' && emergencyProfileImageUrl) || null;
+  const showProfileImage = avatarUrl && !profileImageFailed;
 
   const toggleMenu = () => {
     setIsMenuOpen(!isMenuOpen);
@@ -47,7 +59,23 @@ const Header: React.FC = () => {
 
   useEffect(() => {
     setProfileImageFailed(false);
-  }, [user?.id, user?.profileImageUrl]);
+  }, [user?.id, user?.profileImageUrl, emergencyProfileImageUrl]);
+
+  useEffect(() => {
+    if (user?.role === 'CIVILIAN' && userId) {
+      setEmergencyProfileImageUrl(getEmergencyProfileImageUrl(userId));
+    } else {
+      setEmergencyProfileImageUrl('');
+    }
+  }, [user?.role, userId]);
+
+  useEffect(() => {
+    const handleEmergencyProfileImageUpdated = () => {
+      if (userId) setEmergencyProfileImageUrl(getEmergencyProfileImageUrl(userId));
+    };
+    window.addEventListener('unitycare:emergency-profile-image-updated', handleEmergencyProfileImageUpdated);
+    return () => window.removeEventListener('unitycare:emergency-profile-image-updated', handleEmergencyProfileImageUpdated);
+  }, [userId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -99,30 +127,52 @@ const Header: React.FC = () => {
       .join('');
   };
 
+  const isVolunteerContext =
+    location.pathname.startsWith('/volunteer');
+
   const handleSignIn = () => {
-    navigate('/login');
+    navigate(isVolunteerContext ? '/volunteer-signin' : '/signin');
     closeMenu();
   };
 
   const handleSignUp = () => {
-    navigate('/signup');
+    navigate(isVolunteerContext ? '/volunteer-apply' : '/signup');
     closeMenu();
   };
 
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
+    const role = user?.role;
+    const isVolunteer = role === 'VOLUNTEER' || user?.hasVolunteerProfile || isVolunteerContext;
+    const isAdmin = role === 'ADMIN' || role === 'SUPERADMIN';
+
+    const refreshToken = getRefreshToken();
+    if (refreshToken) {
+      try {
+        await authFetch(`${API_BASE}/auth/signout`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+        }, false);
+      } catch {
+        /* best-effort */
+      }
+    }
+
     clearAuthTokens();
     setUser(null);
-    navigate('/login', { replace: true });
+    const dest = isAdmin ? '/admin-signin' : isVolunteer ? '/volunteer-signin' : '/signin';
+    navigate(dest, { replace: true });
     closeMenu();
   };
 
 
   return (
     <header className="w-full bg-gray-900 px-6 py-4 flex items-center justify-between border-b border-gray-800 relative">
-      {/* Left side - Logo */}
-      <div className="flex items-center gap-2">
-        <div className="w-8 h-8 flex items-center justify-center">
-          <svg
+      {/* Left side - Logo + Emergency Profile (civilian) */}
+      <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 flex items-center justify-center">
+            <svg
             width="24"
             height="24"
             viewBox="0 0 24 24"
@@ -152,8 +202,9 @@ const Header: React.FC = () => {
               strokeLinejoin="round"
             />
           </svg>
+          </div>
+          <span className="text-white text-xl font-bold">Unity Care</span>
         </div>
-        <span className="text-white text-xl font-bold">Unity Care</span>
       </div>
 
       {/* Right side - User icon with dropdown */}
@@ -163,9 +214,9 @@ const Header: React.FC = () => {
           className="w-9 h-9 flex items-center justify-center hover:bg-gray-800 rounded-full transition-colors duration-200"
         >
           <div className="w-8 h-8 rounded-full bg-red-500 flex items-center justify-center overflow-hidden">
-            {showProfileImage ? (
+            {showProfileImage && avatarUrl ? (
               <img
-                src={user.profileImageUrl!}
+                src={avatarUrl}
                 alt=""
                 className="w-full h-full object-cover"
                 referrerPolicy="no-referrer"
@@ -190,9 +241,9 @@ const Header: React.FC = () => {
               <div className="flex flex-col items-center">
                 {/* Profile Picture */}
                 <div className="w-16 h-16 rounded-full bg-gray-600 flex items-center justify-center mb-3 overflow-hidden">
-                  {showProfileImage ? (
+                  {showProfileImage && avatarUrl ? (
                     <img
-                      src={user.profileImageUrl!}
+                      src={avatarUrl}
                       alt=""
                       className="w-full h-full object-cover"
                       referrerPolicy="no-referrer"
@@ -220,8 +271,43 @@ const Header: React.FC = () => {
             {/* Separator */}
             <div className="border-t border-gray-700"></div>
 
-            {/* Auth Actions */}
+            {/* Menu Actions */}
             <div className="py-2">
+              {user && user.role === "CIVILIAN" && (
+                <>
+                  <button
+                    onClick={() => { navigate("/my-incidents"); closeMenu(); }}
+                    className="w-full px-4 py-2.5 flex items-center gap-3 text-white hover:bg-gray-700/50 text-sm transition-colors"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-white/70">
+                      <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      <line x1="12" y1="9" x2="12" y2="13" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                      <line x1="12" y1="17" x2="12.01" y2="17" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                    </svg>
+                    <span>My Incidents</span>
+                  </button>
+                  <button
+                    onClick={() => { navigate("/emergency-profile"); closeMenu(); }}
+                    className="w-full px-4 py-2.5 flex items-center gap-3 text-white hover:bg-gray-700/50 text-sm transition-colors"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-white/70">
+                      <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    <span>Emergency Profile</span>
+                  </button>
+                  <button
+                    onClick={() => { navigate("/account-settings"); closeMenu(); }}
+                    className="w-full px-4 py-2.5 flex items-center gap-3 text-white hover:bg-gray-700/50 text-sm transition-colors"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-white/70">
+                      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2"/>
+                      <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9c.26.604.852.997 1.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    <span>Account Settings</span>
+                  </button>
+                  <div className="border-t border-gray-700 my-1"></div>
+                </>
+              )}
               {user ? (
                 <button
                   onClick={handleSignOut}

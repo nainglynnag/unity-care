@@ -1,4 +1,5 @@
 import jwt from "jsonwebtoken";
+import { randomUUID } from "node:crypto";
 
 const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || "default_access_secret";
 const REFRESH_SECRET =
@@ -15,8 +16,13 @@ export function generateAccessToken(payload: Omit<JwtPayload, "iat" | "exp">) {
   return jwt.sign(payload, ACCESS_SECRET, { expiresIn: "15m" });
 }
 
+
 export function generateRefreshToken(payload: Omit<JwtPayload, "iat" | "exp">) {
-  return jwt.sign(payload, REFRESH_SECRET, { expiresIn: "7d" });
+  return jwt.sign(
+    { ...payload, jti: randomUUID() },
+    REFRESH_SECRET,
+    { expiresIn: "7d" },
+  );
 }
 
 export function verifyAccessToken(token: string): JwtPayload | null {

@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import Header from "../components/Header";
+import Header from "../../components/user/Header";
 import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
 import PhoneIcon from "@mui/icons-material/Phone";
 import VideocamIcon from "@mui/icons-material/Videocam";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import VolumeOffIcon from "@mui/icons-material/VolumeOff";
-import { API_BASE, authFetch } from "../lib/api";
-import { createIncident, getIncidentCategories, type IncidentCategory } from "../lib/incidents";
+import { API_BASE, authFetch, getAccessToken } from "../../lib/api";
+import { createIncident, getIncidentCategories, type IncidentCategory } from "../../lib/incidents";
 
 const HELP_TITLES: Record<string, string> = {
   text: "Emergency - Text support",
@@ -57,6 +57,10 @@ function ChooseHelp() {
       setSubmitError("Location is required. Please enable location and try again.");
       return;
     }
+    if (!categoryId.trim()) {
+      setSubmitError("Please select a category.");
+      return;
+    }
     const title = incidentTitle.trim().length >= TITLE_MIN_LENGTH
       ? incidentTitle.trim()
       : (HELP_TITLES[option] ?? "Emergency - Need help");
@@ -65,13 +69,13 @@ function ChooseHelp() {
     try {
       const data = await createIncident({
         title,
+        categoryId: categoryId.trim(),
         latitude: location.lat,
         longitude: location.lng,
         forSelf: true,
         description: incidentDescription.trim() || undefined,
         addressText: location.addressText ?? undefined,
         accuracy: "GPS",
-        ...(categoryId.trim() && { categoryId: categoryId.trim() }),
       });
       const incidentId = data?.incident?.id;
       const state = { incidentId };
@@ -135,9 +139,13 @@ function ChooseHelp() {
     let cancelled = false;
 
     const ensureAuthenticatedSession = async () => {
+      if (!getAccessToken()) {
+        if (!cancelled) navigate("/signin", { replace: true });
+        return;
+      }
       const res = await authFetch(`${API_BASE}/auth/me`);
       if (!res.ok && !cancelled) {
-        navigate("/login", { replace: true });
+        navigate("/signin", { replace: true });
       }
     };
 

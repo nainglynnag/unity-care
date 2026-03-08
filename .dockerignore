@@ -1,0 +1,41 @@
+# Root-level .dockerignore
+# Build context is the monorepo root, so we exclude everything
+# that the backend Dockerfile doesn't need.
+
+# ── Host dependencies — reinstalled inside Docker ──
+node_modules
+
+# ── Git history ──
+.git
+.gitignore
+
+# ── Frontend (not needed for backend image) ──
+apps/frontend
+
+# ── Backend build artefacts — rebuilt inside Docker ──
+apps/backend/dist
+apps/backend/generated
+apps/backend/node_modules
+
+# ── Environment files — injected at runtime via docker-compose env_file ──
+.env
+.env.*
+apps/backend/.env
+apps/backend/.env.*
+!apps/backend/.env.example
+
+# ── Logs ──
+*.log
+logs/
+
+# ── Test artefacts ──
+coverage/
+
+# ── Editor / OS noise ──
+.DS_Store
+.vscode/
+.idea/
+Thumbs.db
+
+# ── Turborepo cache ──
+.turbo

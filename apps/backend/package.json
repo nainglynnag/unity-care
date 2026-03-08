@@ -4,8 +4,9 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "bun tsx watch src/server.ts",
-    "build": "bun build src/server.ts --outdir dist"
+    "dev": "bun --watch src/server.ts",
+    "build": "bun build src/server.ts --outdir dist",
+    "start": "bun run dist/server.js"
   },
   "devDependencies": {
     "@faker-js/faker": "^10.3.0",

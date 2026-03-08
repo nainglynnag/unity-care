@@ -1,0 +1,31 @@
+# Dependencies — reinstalled inside Docker
+node_modules
+
+# Prisma generated client — regenerated inside Docker
+generated
+
+# TypeScript build output — rebuilt inside Docker
+dist
+
+# Environment files — injected at runtime via docker-compose env_file
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
+
+# Test artefacts
+coverage/
+*.test.ts
+*.spec.ts
+
+# Editor / OS noise
+.DS_Store
+.vscode/
+.idea/
+Thumbs.db
+
+# Turborepo cache
+.turbo
